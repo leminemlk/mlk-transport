@@ -1,6 +1,3 @@
-// ============================================================
-// WHAPI.CLOUD - Envoi de messages WhatsApp
-// ============================================================
 const axios = require('axios');
 
 const API = axios.create({
@@ -12,13 +9,11 @@ const API = axios.create({
   timeout: 10000
 });
 
-/** Formater le numéro en JID WhatsApp */
 function toJid(phone) {
-  const clean = phone.replace(/\D/g, '');
+  const clean = phone.replace(/\D/g, '').replace(/^00/, '');
   return clean.includes('@') ? clean : `${clean}@s.whatsapp.net`;
 }
 
-/** Envoyer un message texte */
 async function sendText(phone, text) {
   try {
     await API.post('/messages/text', { to: toJid(phone), body: text });
@@ -27,10 +22,8 @@ async function sendText(phone, text) {
   }
 }
 
-/** Envoyer des boutons (réponse rapide) */
 async function sendButtons(phone, text, buttons) {
   try {
-    // Whapi supporte les boutons via messages/interactive
     await API.post('/messages/interactive', {
       to: toJid(phone),
       type: 'button',
@@ -43,26 +36,40 @@ async function sendButtons(phone, text, buttons) {
       }
     });
   } catch (e) {
-    // Fallback : message texte avec numérotation
     const txt = text + '\n\n' + buttons.map((b, i) => `${i + 1}️⃣ ${b}`).join('\n');
     await sendText(phone, txt);
   }
 }
 
-/** Envoyer une localisation */
+/** Bouton natif WhatsApp "Partager ma position" */
+async function sendLocationRequest(phone) {
+  try {
+    await API.post('/messages/interactive', {
+      to: toJid(phone),
+      type: 'location_request_message',
+      body: {
+        text: '🚖 *MLK Transport*\n\nAppuyez sur le bouton ci-dessous pour envoyer votre position et appeler une voiture.'
+      },
+      action: { name: 'send_location' }
+    });
+  } catch (e) {
+    // Fallback si non supporté
+    await sendText(phone,
+      `🚖 *MLK Transport*\n\n` +
+      `Appuyez sur 📎 puis *Localisation* pour appeler une voiture.\n\n` +
+      `Pour annuler : *annuler*`
+    );
+  }
+}
+
 async function sendLocation(phone, lat, lng, name = '', address = '') {
   try {
     await API.post('/messages/location', {
-      to: toJid(phone),
-      latitude: lat,
-      longitude: lng,
-      name,
-      address
+      to: toJid(phone), latitude: lat, longitude: lng, name, address
     });
   } catch (e) {
-    // Fallback lien Google Maps
     await sendText(phone, `📍 Position : https://maps.google.com/?q=${lat},${lng}`);
   }
 }
 
-module.exports = { sendText, sendButtons, sendLocation };
+module.exports = { sendText, sendButtons, sendLocation, sendLocationRequest };
