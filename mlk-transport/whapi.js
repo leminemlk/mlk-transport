@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const API = axios.create({
-  baseURL: 'https://gate.whapi.cloud/api/',
+  baseURL: 'https://gate.whapi.cloud/',
   headers: {
     Authorization: `Bearer ${process.env.WHAPI_TOKEN}`,
     'Content-Type': 'application/json'
