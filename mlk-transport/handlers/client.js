@@ -1,4 +1,4 @@
-const { sendText, sendLocationRequest } = require('../whapi');
+const { sendText } = require('../whapi');
 const DB = require('../db');
 const { clearState, findDriver } = require('../queue');
 
@@ -12,7 +12,9 @@ async function handleClient(msg, phone) {
   if (text === 'annuler' || text === 'cancel') {
     DB.queue.remove.run(phone);
     clearState(phone);
-    await sendText(phone, `❌ Demande annulée.\n\nEnvoyez un message pour appeler une voiture.`);
+    await sendText(phone,
+      `❌ Demande annulée.\n\nEnvoyez un message pour appeler une voiture.`
+    );
     return;
   }
 
@@ -26,8 +28,16 @@ async function handleClient(msg, phone) {
     return;
   }
 
-  // Tout autre message → envoyer le bouton de localisation
-  await sendLocationRequest(phone);
+  // Tout autre message → instructions simples
+  await sendText(phone,
+    `🚖 *MLK Transport - Nouakchott*\n\n` +
+    `Pour appeler une voiture :\n\n` +
+    `1️⃣ Appuyez sur 📎\n` +
+    `2️⃣ Choisissez *Localisation*\n` +
+    `3️⃣ Envoyez votre position\n\n` +
+    `_Un chauffeur arrivera dans quelques minutes_ 🚗\n\n` +
+    `Pour annuler : *annuler*`
+  );
 }
 
 module.exports = { handleClient };
