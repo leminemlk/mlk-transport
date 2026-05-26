@@ -121,6 +121,24 @@ app.post('/api/drivers/:phone/pay', (req, res) => {
 });
 
 
+// ─── API LOCALISATION CLIENT ──────────────────────────────────
+app.post('/api/locate', async (req, res) => {
+  const { phone, lat, lng } = req.body;
+  if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
+  try {
+    DB.clients.upsert.run(phone);
+    const ride = DB.rides.create.run(phone, lat, lng);
+    const { findDriver } = require('./queue');
+    const { sendText } = require('./whapi');
+    res.json({ ok: true });
+    await sendText(phone, `🔍 Recherche d'un chauffeur...\nVeuillez patienter.`);
+    await findDriver(phone, lat, lng, ride.lastInsertRowid);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // ─── API PAGE CHAUFFEUR (GPS temps réel) ─────────────────────
 
 app.post('/api/driver/location', (req, res) => {
