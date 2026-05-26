@@ -120,6 +120,48 @@ app.post('/api/drivers/:phone/pay', (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ─── API PAGE CHAUFFEUR (GPS temps réel) ─────────────────────
+
+app.post('/api/driver/location', (req, res) => {
+  const { phone, lat, lng } = req.body;
+  if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
+  DB.drivers.setOnlineWithLocation.run(lat, lng, phone);
+  res.json({ ok: true });
+});
+
+app.get('/api/driver/:phone/status', (req, res) => {
+  const driver = DB.drivers.get.get(req.params.phone);
+  if (!driver) return res.status(404).json({ error: 'Chauffeur introuvable' });
+  const { pendingOffers } = require('./queue');
+  const offer = pendingOffers.get(req.params.phone);
+  const todayRides = DB.db.prepare(
+    "SELECT COUNT(*) as n FROM rides WHERE driver_phone = ? AND DATE(created_at) = DATE('now')"
+  ).get(req.params.phone);
+  res.json({
+    driver,
+    todayRides: todayRides?.n || 0,
+    pendingOffer: offer ? {
+      rideId: offer.rideId,
+      dist: DB.distance(driver.lat, driver.lng, offer.clientLat, offer.clientLng).toFixed(1),
+      eta: DB.estimateMinutes(DB.distance(driver.lat, driver.lng, offer.clientLat, offer.clientLng))
+    } : null
+  });
+});
+
+app.post('/api/driver/:phone/offline', (req, res) => {
+  DB.drivers.setStatus.run('offline', req.params.phone);
+  res.json({ ok: true });
+});
+
+app.post('/api/driver/respond', async (req, res) => {
+  const { phone, response } = req.body;
+  const { acceptRide, refuseRide } = require('./queue');
+  if (response === 'accept') await acceptRide(phone);
+  else await refuseRide(phone);
+  res.json({ ok: true });
+});
+
 // Courses actives
 app.get('/api/rides', (req, res) => {
   res.json(DB.rides.getActive.all());
