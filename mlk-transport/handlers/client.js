@@ -12,13 +12,11 @@ async function handleClient(msg, phone) {
   if (text === 'annuler' || text === 'cancel') {
     DB.queue.remove.run(phone);
     clearState(phone);
-    await sendText(phone,
-      `❌ Demande annulée.\n\nEnvoyez un message pour appeler une voiture.`
-    );
+    await sendText(phone, `❌ Demande annulée.\n\nEnvoyez un message pour appeler une voiture.`);
     return;
   }
 
-  // Position reçue → chercher un chauffeur
+  // Position reçue via WhatsApp 📎
   if (hasLocation) {
     const lat = msg.location.latitude;
     const lng = msg.location.longitude;
@@ -28,15 +26,13 @@ async function handleClient(msg, phone) {
     return;
   }
 
-  // Tout autre message → instructions simples
+  // Tout autre message → envoyer le lien de localisation
+  const link = `https://mlk-transport-production.up.railway.app/locate.html?phone=${phone}`;
   await sendText(phone,
     `🚖 *MLK Transport - Nouakchott*\n\n` +
-    `Pour appeler une voiture :\n\n` +
-    `1️⃣ Appuyez sur 📎\n` +
-    `2️⃣ Choisissez *Localisation*\n` +
-    `3️⃣ Envoyez votre position\n\n` +
-    `_Un chauffeur arrivera dans quelques minutes_ 🚗\n\n` +
-    `Pour annuler : *annuler*`
+    `Cliquez sur ce lien pour appeler une voiture :\n\n` +
+    `👉 ${link}\n\n` +
+    `_Votre position sera détectée automatiquement_ 📍`
   );
 }
 
