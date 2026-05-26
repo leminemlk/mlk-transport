@@ -6,7 +6,7 @@ const API = axios.create({
     Authorization: `Bearer ${process.env.WHAPI_TOKEN}`,
     'Content-Type': 'application/json'
   },
-  timeout: 10000
+  timeout: 30000
 });
 
 function toJid(phone) {
