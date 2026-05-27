@@ -11,7 +11,7 @@ app.use(express.json());
 
 // ─── SÉCURITÉ DASHBOARD ──────────────────────────────────────
 
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'mlk2024';
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'mlkmlkMLK01@';
 
 // Servir les fichiers statiques avec protection pour index.html et dashboard
 app.use('/chauffeur.html', express.static('public'));
