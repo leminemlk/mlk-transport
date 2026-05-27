@@ -299,3 +299,36 @@ DB.init().then(async () => {
   console.error('❌ Erreur DB:', err);
   process.exit(1);
 });
+
+// ─── API SUPPLÉMENTAIRES ──────────────────────────────────────
+
+// Clients
+app.get('/api/clients', async (req, res) => {
+  const r = await DB.pool.query('SELECT * FROM clients ORDER BY created_at DESC');
+  res.json(r.rows);
+});
+
+app.delete('/api/clients/:phone', async (req, res) => {
+  await DB.pool.query('DELETE FROM clients WHERE phone = $1', [req.params.phone]);
+  res.json({ ok: true });
+});
+
+// Upsert chauffeur (ajout/modification)
+app.post('/api/drivers/upsert', async (req, res) => {
+  const { phone, name, clim, days, validated } = req.body;
+  await DB.pool.query(`
+    INSERT INTO drivers (phone, name, clim, validated, reg_step)
+    VALUES ($1, $2, $3, $4, 'done')
+    ON CONFLICT (phone) DO UPDATE SET name=$2, clim=$3, validated=$4
+  `, [phone, name, clim, validated]);
+  if (days && days > 0) {
+    await DB.drivers.renewSubscription(phone);
+  }
+  res.json({ ok: true });
+});
+
+// Supprimer chauffeur
+app.delete('/api/drivers/:phone', async (req, res) => {
+  await DB.pool.query('DELETE FROM drivers WHERE phone = $1', [req.params.phone]);
+  res.json({ ok: true });
+});
