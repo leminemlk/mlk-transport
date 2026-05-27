@@ -1,19 +1,22 @@
 const { sendText } = require('../whapi');
 const DB = require('../db');
-const { getState, setState, clearState, acceptRide, refuseRide, pendingOffers, processQueue } = require('../queue');
+const { acceptRide, refuseRide, pendingOffers, processQueue } = require('../queue');
+
+const BASE_URL = 'https://mlk-transport-production.up.railway.app';
+const driverLink = (phone) => `${BASE_URL}/chauffeur.html?phone=${phone}`;
 
 async function handleDriver(msg, driver) {
   const phone = driver.phone;
   const text = (msg.text?.body || '').trim();
   const hasLocation = msg.type === 'location';
 
-  // Offre en attente → 1 accepter, 2 refuser
+  // 1 = قبول | 2 = رفض
   if (pendingOffers.has(phone)) {
     if (text === '1') { await acceptRide(phone); return; }
     if (text === '2') { await refuseRide(phone); return; }
   }
 
-  // 3 = fin de course
+  // 3 = إنهاء الرحلة
   if (text === '3') {
     const myRide = await DB.rides.getActiveByDriver(phone);
     if (myRide) {
@@ -22,10 +25,9 @@ async function handleDriver(msg, driver) {
       await sendText(phone,
         `✅ انتهت الرحلة ! | Course terminée !\n` +
         `أنت متاح الآن | Vous êtes en ligne.\n\n` +
-        `اكتب *0️⃣* للاستراحة | Tapez *0️⃣* pour pause`
+        `*0️⃣* استراحة | Pause`
       );
-      const freshDriver = await DB.drivers.get(phone);
-      await processQueue(freshDriver);
+      await processQueue(await DB.drivers.get(phone));
     } else {
       await sendText(phone, `⚠️ لا توجد رحلة نشطة | Aucune course active.`);
     }
@@ -35,10 +37,7 @@ async function handleDriver(msg, driver) {
   // 0 = pause
   if (text === '0') {
     await DB.drivers.setStatus('offline', phone);
-    await sendText(phone,
-      `⏸ استراحة | Pause.\n` +
-      `أرسل موقعك 📍 للعودة | Envoyez position 📍 pour reprendre.`
-    );
+    await sendText(phone, `⏸ استراحة | Pause.\n\nافتح التطبيق للعودة :\n👉 ${driverLink(phone)}`);
     return;
   }
 
@@ -47,20 +46,20 @@ async function handleDriver(msg, driver) {
     const now = new Date();
     const hasTrial = driver.trial_until && new Date(driver.trial_until) > now;
     const hasSub = driver.subscription_end && new Date(driver.subscription_end) > now;
-    let subInfo = hasTrial
-      ? `🎁 ${Math.ceil((new Date(driver.trial_until)-now)/86400000)} يوم مجاني | jours gratuits`
+    const sub = hasTrial
+      ? `🎁 ${Math.ceil((new Date(driver.trial_until)-now)/86400000)} أيام مجانية`
       : hasSub
-      ? `✅ ${Math.ceil((new Date(driver.subscription_end)-now)/86400000)} يوم | jours restants`
-      : `⚠️ انتهى الاشتراك | Abonnement expiré`;
+      ? `✅ ${Math.ceil((new Date(driver.subscription_end)-now)/86400000)} يوم متبقي`
+      : `⚠️ انتهى الاشتراك | Expiré`;
     const s = driver.status === 'online' ? '🟢' : driver.status === 'busy' ? '🟡' : '⚫';
     await sendText(phone,
-      `📊 *${driver.name}*\n${s} ${driver.status}\n${subInfo}\n\n` +
-      `📍 موقعك → متاح\n*1* قبول | *2* رفض\n*3* إنهاء الرحلة\n*0️⃣* استراحة\n*9* معلوماتي`
+      `📊 *${driver.name}*\n${s} ${driver.status}\n${sub}\n\n` +
+      `تطبيق السائق :\n👉 ${driverLink(phone)}`
     );
     return;
   }
 
-  // موقع GPS
+  // موقع GPS → متاح
   if (hasLocation) {
     const lat = msg.location.latitude;
     const lng = msg.location.longitude;
@@ -69,9 +68,7 @@ async function handleDriver(msg, driver) {
     const hasSub = driver.subscription_end && new Date(driver.subscription_end) > now;
 
     if (!driver.active || (!hasTrial && !hasSub)) {
-      await sendText(phone,
-        `⚠️ انتهى اشتراكك | Abonnement expiré !\n💰 500 MRU/semaine`
-      );
+      await sendText(phone, `⚠️ انتهى اشتراكك | Abonnement expiré !\n💰 500 MRU/semaine`);
       return;
     }
 
@@ -79,21 +76,20 @@ async function handleDriver(msg, driver) {
     await DB.drivers.setOnlineWithLocation(lat, lng, phone);
     await sendText(phone,
       `✅ أنت متاح الآن ! | En ligne !\n\n` +
-      `*1* قبول | *2* رفض | *3* إنهاء\n*0️⃣* استراحة | *9* معلوماتي`
+      `افتح التطبيق لإدارة رحلاتك :\n👉 ${driverLink(phone)}\n\n` +
+      `*1* قبول | *2* رفض | *3* إنهاء | *0️⃣* استراحة`
     );
     if (wasOffline) await processQueue(await DB.drivers.get(phone));
     return;
   }
 
-  // Message non reconnu → aide
+  // Tout autre message → envoyer le lien directement
   await sendText(phone,
-    `🚕 *MK TAXI — سائق | Chauffeur*\n\n` +
-    `📍 أرسل موقعك → متاح | Position → en ligne\n` +
-    `*1* قبول رحلة | Accepter course\n` +
-    `*2* رفض رحلة | Refuser course\n` +
-    `*3* إنهاء الرحلة | Terminer course\n` +
-    `*0️⃣* استراحة | Pause\n` +
-    `*9* معلوماتي | Mon statut`
+    `🚕 *MK TAXI — تطبيق السائق*\n\n` +
+    `افتح الرابط لإدارة رحلاتك :\n` +
+    `Ouvrez ce lien pour gérer vos courses :\n\n` +
+    `👉 ${driverLink(phone)}\n\n` +
+    `*1* قبول | *2* رفض | *3* إنهاء | *0️⃣* استراحة | *9* معلوماتي`
   );
 }
 
