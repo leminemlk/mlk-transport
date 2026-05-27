@@ -9,33 +9,10 @@ const { handleDriver } = require('./handlers/driver');
 const app = express();
 app.use(express.json());
 
-// ─── SÉCURITÉ DASHBOARD ──────────────────────────────────────
+// Servir tous les fichiers statiques publics
+app.use(express.static('public'));
 
-const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'mlkmlkMLK01@';
-
-// Servir les fichiers statiques avec protection pour index.html et dashboard
-app.use('/chauffeur.html', express.static('public'));
-app.use('/locate.html', express.static('public'));
-app.use('/sw.js', express.static('public'));
-app.use('/manifest.json', express.static('public'));
-
-// Dashboard protégé par mot de passe
-app.get('/', (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) {
-    res.set('WWW-Authenticate', 'Basic realm="MLK Transport Admin"');
-    return res.status(401).send('Accès refusé | Access Denied');
-  }
-  const b64 = auth.split(' ')[1];
-  const [user, pass] = Buffer.from(b64, 'base64').toString().split(':');
-  if (pass !== ADMIN_PASS) {
-    res.set('WWW-Authenticate', 'Basic realm="MLK Transport Admin"');
-    return res.status(401).send('Mot de passe incorrect | Wrong password');
-  }
-  res.sendFile('index.html', { root: 'public' });
-});
-
-app.get('/dashboard.html', (req, res) => res.redirect('/'));
+const ADMIN_PASS = process.env.ADMIN_PASSWORD || 'mlk2024';
 
 // ─── WEBHOOK ─────────────────────────────────────────────────
 
@@ -71,13 +48,12 @@ app.post('/webhook', async (req, res) => {
       // ── Étapes d'inscription ──────────────────────────────
       if (state === 'reg_name' && msg.text?.body) {
         const name = msg.text.body.trim();
-        // Créer le chauffeur avec reg_step en cours
         await pool_insert_driver(phone, name);
         setState(phone, 'reg_photo_ext', { name });
         await sendText(phone,
           `✅ شكراً ${name} !\n\n` +
           `2️⃣ أرسل صورة *خارجية* للسيارة مع لوحة الأرقام 🚗\n` +
-          `Envoyez une photo *extérieure* du véhicule avec la plaque d'immatriculation.`
+          `Envoyez une photo *extérieure* du véhicule avec la plaque.`
         );
         continue;
       }
@@ -109,15 +85,13 @@ app.post('/webhook', async (req, res) => {
         await finish_registration(phone, data, clim);
         clearState(phone);
         await sendText(phone,
-          `🎉 *تم التسجيل بنجاح !*\n` +
-          `*Inscription envoyée !*\n\n` +
+          `🎉 *تم التسجيل بنجاح !*\n*Inscription envoyée !*\n\n` +
           `⏳ سيتم مراجعة طلبك من إدارة MLK Transport.\n` +
           `Votre dossier sera examiné par MLK Transport.\n\n` +
           `🎁 ستحصل على 3 أشهر مجانية عند الموافقة.\n` +
           `3 mois gratuits à l'approbation.`
         );
-        // Notifier admin
-        console.log(`[INSCRIPTION] Nouveau chauffeur en attente: ${phone} - ${data.name}`);
+        console.log(`[INSCRIPTION] Nouveau chauffeur: ${phone} - ${data.name}`);
         continue;
       }
 
@@ -161,15 +135,7 @@ async function finish_registration(phone, data, clim) {
 
 // ─── API ADMIN ───────────────────────────────────────────────
 
-const apiAuth = (req, res, next) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Non autorisé' });
-  const pass = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':')[1];
-  if (pass !== ADMIN_PASS) return res.status(401).json({ error: 'Mot de passe incorrect' });
-  next();
-};
-
-app.get('/api/drivers', apiAuth, async (req, res) => {
+app.get('/api/drivers', async (req, res) => {
   const drivers = await DB.drivers.getAll();
   const now = new Date();
   res.json(drivers.map(d => ({
@@ -179,8 +145,7 @@ app.get('/api/drivers', apiAuth, async (req, res) => {
   })));
 });
 
-// Valider un chauffeur
-app.post('/api/drivers/:phone/validate', apiAuth, async (req, res) => {
+app.post('/api/drivers/:phone/validate', async (req, res) => {
   await DB.pool.query(`UPDATE drivers SET validated=1 WHERE phone=$1`, [req.params.phone]);
   await sendText(req.params.phone,
     `✅ *تمت الموافقة على طلبك !*\n*Votre dossier a été approuvé !*\n\n` +
@@ -190,19 +155,19 @@ app.post('/api/drivers/:phone/validate', apiAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/drivers/:phone/block', apiAuth, async (req, res) => {
+app.post('/api/drivers/:phone/block', async (req, res) => {
   await DB.drivers.block(req.params.phone);
   await sendText(req.params.phone, '⛔ تم تعليق حسابك | Votre accès a été suspendu.');
   res.json({ ok: true });
 });
 
-app.post('/api/drivers/:phone/unblock', apiAuth, async (req, res) => {
+app.post('/api/drivers/:phone/unblock', async (req, res) => {
   await DB.drivers.unblock(req.params.phone);
   await sendText(req.params.phone, '✅ تم تفعيل حسابك | Votre accès a été réactivé !');
   res.json({ ok: true });
 });
 
-app.post('/api/drivers/:phone/pay', apiAuth, async (req, res) => {
+app.post('/api/drivers/:phone/pay', async (req, res) => {
   const phone = req.params.phone;
   await DB.drivers.renewSubscription(phone);
   const weekLabel = DB.getWeekLabel();
@@ -211,17 +176,17 @@ app.post('/api/drivers/:phone/pay', apiAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/rides', apiAuth, async (req, res) => res.json(await DB.rides.getActive()));
-app.get('/api/queue', apiAuth, async (req, res) => res.json(await DB.queue.getAll()));
+app.get('/api/rides', async (req, res) => res.json(await DB.rides.getActive()));
+app.get('/api/queue', async (req, res) => res.json(await DB.queue.getAll()));
 
-app.get('/api/stats', apiAuth, async (req, res) => {
+app.get('/api/stats', async (req, res) => {
   const rides = await DB.rides.getStats();
   const driversAll = await DB.drivers.getAll();
   const online = await DB.drivers.getOnline();
   res.json({ rides, drivers: { total: driversAll.length, online: online.length } });
 });
 
-app.post('/api/broadcast', apiAuth, async (req, res) => {
+app.post('/api/broadcast', async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'Message requis' });
   const drivers = (await DB.drivers.getAll()).filter(d => d.active && d.validated);
