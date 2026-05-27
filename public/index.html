@@ -1,3 +1,14 @@
+// Protection mot de passe
+const PASS = 'mlkmlkMLK01@';
+const stored = sessionStorage.getItem('mlk_auth');
+if (stored !== PASS) {
+  const entered = prompt('🔐 Mot de passe admin | كلمة المرور:');
+  if (entered !== PASS) {
+    document.body.innerHTML = '<div style="color:red;text-align:center;padding:50px;font-size:20px">❌ Accès refusé</div>';
+    throw new Error('Accès refusé');
+  }
+  sessionStorage.setItem('mlk_auth', PASS);
+}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
