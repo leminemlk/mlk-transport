@@ -54,8 +54,14 @@ app.post('/webhook', async (req, res) => {
       // ── Inscription chauffeur ─────────────────────────────
       if (text === 'chauffeur' || text === 'سائق') {
         const existing = await DB.drivers.get(phone);
-        if (existing && existing.reg_step === 'done') {
-          await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !`);
+        if (existing) {
+          if (existing.validated) {
+            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${req.params.phone}`);
+          } else if (existing.reg_step === 'done') {
+            await sendText(phone, `⏳ طلبك قيد المراجعة | Dossier en cours d'examen.`);
+          } else {
+            await sendText(phone, `⏳ أكمل تسجيلك | Continuez votre inscription.`);
+          }
           continue;
         }
         setState(phone, 'reg_name');

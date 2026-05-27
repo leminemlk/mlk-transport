@@ -1,6 +1,6 @@
 {
   "name": "mlk-transport",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "MLK Transport - Bot WhatsApp Nouakchott",
   "main": "server.js",
   "scripts": {
