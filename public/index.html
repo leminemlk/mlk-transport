@@ -457,19 +457,74 @@ async function refreshMap() {
   if (!map) return;
   mapMarkers.forEach(m => map.removeLayer(m));
   mapMarkers = [];
+
+  // Chauffeurs
   const drivers = await api('/api/drivers');
-  if (!Array.isArray(drivers)) return;
-  drivers.filter(d => d.lat && d.lng).forEach(d => {
-    const color = d.status === 'online' ? '🟢' : d.status === 'busy' ? '🟡' : '⚫';
-    const icon = L.divIcon({
-      html: `<div style="background:${d.status==='online'?'#48bb78':d.status==='busy'?'#f6ad55':'#718096'};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,
-      className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+  if (Array.isArray(drivers)) {
+    drivers.filter(d => d.lat && d.lng && d.validated).forEach(d => {
+      const statusColor = d.status === 'online' ? '#48bb78' : d.status === 'busy' ? '#f6ad55' : '#718096';
+      const statusIcon = d.status === 'online' ? '🟢' : d.status === 'busy' ? '🟡' : '⚫';
+      const icon = L.divIcon({
+        html: `<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));line-height:1">🚕</div>
+               <div style="background:${statusColor};border-radius:10px;color:#000;font-size:10px;font-weight:700;padding:2px 6px;text-align:center;margin-top:2px;box-shadow:0 1px 3px rgba(0,0,0,.3)">${d.name.split(' ')[0]}</div>`,
+        className: '',
+        iconSize: [50, 48],
+        iconAnchor: [25, 48]
+      });
+      const marker = L.marker([d.lat, d.lng], { icon })
+        .bindPopup(`
+          <div style="font-family:system-ui;min-width:160px">
+            <div style="font-size:16px;font-weight:700;margin-bottom:6px">🚕 ${d.name}</div>
+            <div>📞 +${d.phone}</div>
+            <div>${statusIcon} ${d.status}</div>
+            <div>${d.clim ? '❄️ Climatisée' : '🌡 Sans clim'}</div>
+          </div>
+        `)
+        .addTo(map);
+      mapMarkers.push(marker);
     });
-    const marker = L.marker([d.lat, d.lng], { icon })
-      .bindPopup(`<b>${d.name}</b><br>+${d.phone}<br>${color} ${d.status}<br>${d.clim ? '❄️ Clim' : ''}`)
-      .addTo(map);
-    mapMarkers.push(marker);
-  });
+  }
+
+  // Clients en attente (queue)
+  const queue = await api('/api/queue');
+  if (Array.isArray(queue)) {
+    queue.forEach((q, i) => {
+      if (!q.client_lat || !q.client_lng) return;
+      const icon = L.divIcon({
+        html: `<div style="font-size:28px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));line-height:1">🧍</div>
+               <div style="background:#f6c90e;border-radius:10px;color:#000;font-size:10px;font-weight:700;padding:2px 6px;text-align:center;margin-top:2px">#${i+1}</div>`,
+        className: '',
+        iconSize: [40, 48],
+        iconAnchor: [20, 48]
+      });
+      const marker = L.marker([q.client_lat, q.client_lng], { icon })
+        .bindPopup(`
+          <div style="font-family:system-ui">
+            <div style="font-size:15px;font-weight:700;margin-bottom:4px">🧍 Client #${i+1}</div>
+            <div>📞 +${q.client_phone}</div>
+            <div style="color:#718096;font-size:11px">En attente de chauffeur</div>
+          </div>
+        `)
+        .addTo(map);
+      mapMarkers.push(marker);
+    });
+  }
+
+  // Courses actives
+  const rides = await api('/api/rides');
+  if (Array.isArray(rides)) {
+    rides.filter(r => r.status === 'assigned' && r.client_lat && r.client_lng).forEach(r => {
+      const icon = L.divIcon({
+        html: `<div style="font-size:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));line-height:1">📍</div>`,
+        className: '',
+        iconSize: [30, 30],
+        iconAnchor: [15, 30]
+      });
+      L.marker([r.client_lat, r.client_lng], { icon })
+        .bindPopup(`<div style="font-family:system-ui"><b>Course en cours</b><br>Client: +${r.client_phone}<br>Chauffeur: +${r.driver_phone}</div>`)
+        .addTo(map);
+    });
+  }
 }
 
 // ─── ACTIONS CHAUFFEURS ───────────────────────────────────────

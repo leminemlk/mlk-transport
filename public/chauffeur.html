@@ -96,11 +96,18 @@ input:focus{outline:none;border-color:#f6c90e}
       <div id="sub-badge" class="sub-badge sub-ok">...</div>
     </div>
 
-    <!-- Toggle ON/OFF -->
-    <button id="toggle-btn" class="toggle-btn offline" onclick="toggleStatus()">
-      <div id="toggle-text">📍 اضغط للعمل | Appuyer pour travailler</div>
-      <div class="toggle-sub" id="toggle-sub">سيتم تفعيل GPS تلقائياً</div>
-    </button>
+    <!-- Boutons statut -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+      <button id="btn-active" onclick="setActive()" style="background:#1a3a2a;color:#68d391;border:2px solid #48bb78;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
+        🟢<br>متاح<br><small>Actif</small>
+      </button>
+      <button id="btn-pause" onclick="setPause()" style="background:#2d3748;color:#a0aec0;border:2px solid #4a5568;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
+        ⏸<br>استراحة<br><small>Pause</small>
+      </button>
+      <button id="btn-stop" onclick="setStop()" style="background:#3a1a1a;color:#fc8181;border:2px solid #6a2d2d;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
+        ⛔<br>إيقاف<br><small>Arrêt</small>
+      </button>
+    </div>
 
     <!-- GPS -->
     <div class="gps-card">
@@ -134,7 +141,7 @@ input:focus{outline:none;border-color:#f6c90e}
 </div>
 
 <script>
-let driverPhone = localStorage.getItem('mk_driver_phone') || '';
+let driverPhone = '';
 let driverData = null;
 let isOnline = false;
 let gpsInterval = null;
@@ -144,7 +151,18 @@ let rideTimer = null;
 let wakeLock = null;
 let lastLat = null, lastLng = null;
 
-window.onload = () => { if (driverPhone) login(true); };
+window.onload = () => {
+  // Lire le numéro depuis l'URL d'abord
+  const urlPhone = new URLSearchParams(window.location.search).get('phone');
+  if (urlPhone) {
+    driverPhone = urlPhone.replace(/\D/g, '');
+    login(true);
+  } else {
+    // Sinon depuis localStorage
+    const saved = localStorage.getItem('mk_driver_phone');
+    if (saved) { driverPhone = saved; login(true); }
+  }
+};
 
 async function login(auto = false) {
   const phone = auto ? driverPhone : document.getElementById('phone-input').value.trim().replace(/\D/g,'');
@@ -204,30 +222,58 @@ function updateUI() {
 }
 
 function updateToggleBtn() {
-  const btn = document.getElementById('toggle-btn');
-  const text = document.getElementById('toggle-text');
   document.getElementById('stat-status').textContent = isOnline ? '🟢' : '⚫';
-  if (isOnline) {
-    btn.className = 'toggle-btn online';
-    text.textContent = '🟢 أنت متاح | En ligne — appuyer pour pause';
-  } else {
-    btn.className = 'toggle-btn offline';
-    text.textContent = '📍 اضغط للعمل | Appuyer pour travailler';
-  }
+  if (isOnline) highlightBtn('btn-active');
+  else highlightBtn('btn-pause');
 }
 
-async function toggleStatus() {
-  if (!isOnline) { startGPS(); }
-  else {
-    stopGPS();
-    await fetch(`/api/driver/${driverPhone}/offline`, { method: 'POST' });
-    isOnline = false;
-    updateToggleBtn();
-    document.getElementById('gps-status').className = 'gps-inactive';
-    document.getElementById('gps-status').textContent = 'GPS غير نشط | inactif';
-    releaseWakeLock();
-  }
+async function setActive() {
+  startGPS();
+  highlightBtn('btn-active');
 }
+
+async function setPause() {
+  stopGPS();
+  await fetch(`/api/driver/${driverPhone}/offline`, { method: 'POST' });
+  isOnline = false;
+  releaseWakeLock();
+  document.getElementById('gps-status').className = 'gps-inactive';
+  document.getElementById('gps-status').textContent = 'GPS غير نشط | inactif';
+  document.getElementById('stat-status').textContent = '⏸';
+  highlightBtn('btn-pause');
+  await fetch(`/api/driver/${driverPhone}/offline`, { method: 'POST' });
+}
+
+async function setStop() {
+  stopGPS();
+  await fetch(`/api/driver/${driverPhone}/offline`, { method: 'POST' });
+  isOnline = false;
+  releaseWakeLock();
+  document.getElementById('gps-status').className = 'gps-inactive';
+  document.getElementById('gps-status').textContent = 'GPS غير نشط | inactif';
+  document.getElementById('stat-status').textContent = '⛔';
+  highlightBtn('btn-stop');
+}
+
+function highlightBtn(activeId) {
+  const btns = ['btn-active', 'btn-pause', 'btn-stop'];
+  const styles = {
+    'btn-active': { bg: '#1a3a2a', color: '#68d391', border: '#48bb78' },
+    'btn-pause':  { bg: '#2d3748', color: '#a0aec0', border: '#4a5568' },
+    'btn-stop':   { bg: '#3a1a1a', color: '#fc8181', border: '#6a2d2d' },
+  };
+  btns.forEach(id => {
+    const s = styles[id];
+    const btn = document.getElementById(id);
+    btn.style.background = s.bg;
+    btn.style.color = s.color;
+    btn.style.borderColor = s.border;
+    btn.style.transform = id === activeId ? 'scale(1.05)' : 'scale(1)';
+    btn.style.boxShadow = id === activeId ? `0 0 16px ${s.border}88` : 'none';
+  });
+}
+
+async function toggleStatus() { setActive(); }
 
 function startGPS() {
   if (!navigator.geolocation) { alert('GPS غير متاح | GPS non disponible'); return; }
