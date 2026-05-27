@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>MLK Transport — سائق</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+.header {
+  background: #1a1f2e; border-bottom: 2px solid #f6c90e;
+  padding: 14px 20px; text-align: center;
+}
+.header h1 { color: #f6c90e; font-size: 20px; font-weight: 800; }
+.header p { color: #718096; font-size: 11px; margin-top: 2px; }
+
+.container { padding: 16px; max-width: 420px; margin: 0 auto; }
+
+/* Login */
+.login-box {
+  background: #1a1f2e; border: 1px solid #2d3748;
+  border-radius: 16px; padding: 24px; margin-top: 32px; text-align: center;
+}
+.login-box h2 { color: #f6c90e; font-size: 18px; margin-bottom: 4px; }
+.login-box p { color: #718096; font-size: 12px; margin-bottom: 20px; }
+
+input[type="tel"] {
+  width: 100%; background: #0f1117; border: 1px solid #2d3748;
+  border-radius: 10px; color: #e2e8f0; padding: 14px;
+  font-size: 18px; margin-bottom: 14px; text-align: center; direction: ltr;
+}
+input:focus { outline: none; border-color: #f6c90e; }
+
+.btn-login {
+  width: 100%; background: #f6c90e; color: #1a1a1a;
+  border: none; border-radius: 10px; padding: 16px;
+  font-size: 16px; font-weight: 800; cursor: pointer;
+}
+
+/* Dashboard */
+.driver-card {
+  background: #1a1f2e; border: 1px solid #2d3748;
+  border-radius: 14px; padding: 16px; margin-bottom: 12px;
+}
+.driver-name { font-size: 18px; font-weight: 700; color: #f6c90e; }
+.driver-phone { color: #718096; font-size: 12px; direction: ltr; }
+
+.sub-badge {
+  border-radius: 8px; padding: 8px 12px; margin-top: 10px;
+  font-size: 12px; text-align: center;
+}
+.sub-trial { background: #1a3a2a; color: #68d391; border: 1px solid #2d6a4f; }
+.sub-expired { background: #3a1a1a; color: #fc8181; border: 1px solid #6a2d2d; }
+
+/* Toggle ON/OFF */
+.toggle-btn {
+  width: 100%; border: none; border-radius: 14px;
+  padding: 20px; font-size: 18px; font-weight: 800;
+  cursor: pointer; margin-bottom: 12px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+}
+.toggle-btn.offline { background: #2d3748; color: #a0aec0; }
+.toggle-btn.online {
+  background: linear-gradient(135deg, #2d6a4f, #1b4332);
+  color: #68d391; border: 2px solid #48bb78;
+  animation: pulse-green 2s infinite;
+}
+@keyframes pulse-green {
+  0%,100%{box-shadow:0 0 15px rgba(72,187,120,.3)}
+  50%{box-shadow:0 0 30px rgba(72,187,120,.6)}
+}
+.toggle-sub { font-size: 12px; opacity: 0.8; }
+
+/* GPS Card */
+.gps-card {
+  background: #1a1f2e; border: 1px solid #2d3748;
+  border-radius: 12px; padding: 14px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 12px;
+}
+.gps-icon { font-size: 24px; }
+.gps-info { flex: 1; }
+.gps-status { font-size: 13px; font-weight: 600; }
+.gps-status.active { color: #68d391; }
+.gps-status.inactive { color: #718096; }
+.gps-coords { font-size: 10px; color: #4a5568; font-family: monospace; direction: ltr; }
+.gps-update { font-size: 10px; color: #4a5568; }
+
+/* Notification course */
+.ride-notif {
+  background: #1a3a2a; border: 2px solid #48bb78;
+  border-radius: 14px; padding: 18px; margin-bottom: 12px;
+  animation: slide-in .3s ease;
+}
+@keyframes slide-in { from{transform:translateY(-15px);opacity:0} to{transform:translateY(0);opacity:1} }
+.ride-title { color: #68d391; font-size: 16px; font-weight: 800; margin-bottom: 10px; }
+.ride-info { color: #a0aec0; font-size: 13px; margin-bottom: 4px; }
+.ride-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.btn-accept { background: #2d6a4f; color: #68d391; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
+.btn-refuse { background: #6a2d2d; color: #fc8181; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; }
+.ride-timer { text-align: center; color: #4a5568; font-size: 11px; margin-top: 8px; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.stat-box { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 14px; text-align: center; }
+.stat-val { font-size: 26px; font-weight: 800; color: #f6c90e; }
+.stat-lbl { font-size: 10px; color: #718096; margin-top: 2px; }
+
+.wake-info { text-align: center; font-size: 10px; color: #4a5568; padding: 8px; }
+.logout-btn { background: none; border: none; color: #4a5568; font-size: 12px; cursor: pointer; display: block; margin: 16px auto; }
+.error-msg { color: #fc8181; font-size: 12px; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🚖 MLK Transport</h1>
+  <p>لوحة السائق | Espace Chauffeur</p>
+</div>
+
+<div class="container">
+
+  <!-- LOGIN -->
+  <div id="login-section">
+    <div class="login-box">
+      <h2>👤 تسجيل الدخول | Connexion</h2>
+      <p>أدخل رقم واتساب الخاص بك<br>Entrez votre numéro WhatsApp</p>
+      <input type="tel" id="phone-input" placeholder="222XXXXXXXX" maxlength="15" dir="ltr">
+      <button class="btn-login" onclick="login()">دخول | Connexion →</button>
+      <div class="error-msg" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard-section" style="display:none">
+
+    <!-- Notification course -->
+    <div id="ride-notification" style="display:none" class="ride-notif">
+      <div class="ride-title">🚖 رحلة جديدة ! | Nouvelle course !</div>
+      <div class="ride-info" id="ride-distance"></div>
+      <div class="ride-info" id="ride-eta"></div>
+      <div class="ride-btns">
+        <button class="btn-accept" onclick="respondRide('accept')">✅ قبول | Accepter</button>
+        <button class="btn-refuse" onclick="respondRide('refuse')">❌ رفض | Refuser</button>
+      </div>
+      <div class="ride-timer" id="ride-timer"></div>
+    </div>
+
+    <!-- Profil -->
+    <div class="driver-card">
+      <div class="driver-name" id="driver-name">—</div>
+      <div class="driver-phone" id="driver-phone">—</div>
+      <div id="sub-badge" class="sub-badge sub-trial">جاري التحميل...</div>
+    </div>
+
+    <!-- Toggle ON/OFF -->
+    <button id="toggle-btn" class="toggle-btn offline" onclick="toggleStatus()">
+      <div id="toggle-text">📍 الضغط للعمل | Appuyer pour travailler</div>
+      <div class="toggle-sub" id="toggle-sub">اضغط وأرسل موقعك</div>
+    </button>
+
+    <!-- GPS -->
+    <div class="gps-card">
+      <div class="gps-icon">📡</div>
+      <div class="gps-info">
+        <div class="gps-status inactive" id="gps-status">GPS غير نشط | GPS inactif</div>
+        <div class="gps-coords" id="gps-coords">—</div>
+        <div class="gps-update" id="gps-update">يتحدث كل 30 ثانية | Mise à jour chaque 30s</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-val" id="stat-courses">0</div>
+        <div class="stat-lbl">رحلات اليوم | Courses</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-status">⚫</div>
+        <div class="stat-lbl">الحالة | Statut</div>
+      </div>
+    </div>
+
+    <div class="wake-info" id="wake-info">🔋 ابق الشاشة مضاءة أثناء العمل | Gardez l'écran allumé</div>
+    <button class="logout-btn" onclick="logout()">تسجيل خروج | Se déconnecter</button>
+  </div>
+</div>
+
+<script>
+let driverPhone = localStorage.getItem('mlk_driver_phone') || '';
+let driverData = null;
+let isOnline = false;
+let gpsInterval = null;
+let pingInterval = null;
+let currentRide = null;
+let rideTimer = null;
+let wakeLock = null;
+
+window.onload = () => { if (driverPhone) login(true); };
+
+async function login(auto = false) {
+  const phone = auto ? driverPhone : document.getElementById('phone-input').value.trim().replace(/\D/g,'');
+  if (!phone) return;
+  try {
+    const res = await fetch('/api/drivers');
+    const drivers = await res.json();
+    const driver = drivers.find(d => d.phone === phone);
+    if (!driver) {
+      document.getElementById('login-error').textContent = '❌ رقم غير مسجل | Numéro non trouvé. Envoyez "chauffeur" au bot WhatsApp.';
+      return;
+    }
+    driverPhone = driver.phone;
+    driverData = driver;
+    localStorage.setItem('mlk_driver_phone', driverPhone);
+    showDashboard();
+  } catch(e) {
+    document.getElementById('login-error').textContent = '❌ خطأ في الاتصال | Erreur de connexion.';
+  }
+}
+
+function showDashboard() {
+  document.getElementById('login-section').style.display = 'none';
+  document.getElementById('dashboard-section').style.display = 'block';
+  updateUI();
+  startPing();
+}
+
+function updateUI() {
+  if (!driverData) return;
+  document.getElementById('driver-name').textContent = '👤 ' + driverData.name;
+  document.getElementById('driver-phone').textContent = '+' + driverData.phone;
+
+  const now = new Date();
+  const hasTrial = driverData.trial_until && new Date(driverData.trial_until) > now;
+  const hasSub = driverData.subscription_end && new Date(driverData.subscription_end) > now;
+  const badge = document.getElementById('sub-badge');
+  if (hasTrial) {
+    const days = Math.ceil((new Date(driverData.trial_until) - now) / 86400000);
+    badge.className = 'sub-badge sub-trial';
+    badge.textContent = `🎁 ${days} أيام مجانية | jours gratuits`;
+  } else if (hasSub) {
+    const days = Math.ceil((new Date(driverData.subscription_end) - now) / 86400000);
+    badge.className = 'sub-badge sub-trial';
+    badge.textContent = `✅ اشتراك نشط ${days} يوم | Abonnement actif ${days}j`;
+  } else {
+    badge.className = 'sub-badge sub-expired';
+    badge.textContent = `⚠️ انتهى الاشتراك | Abonnement expiré`;
+  }
+
+  isOnline = driverData.status === 'online' || driverData.status === 'busy';
+  updateToggleBtn();
+}
+
+function updateToggleBtn() {
+  const btn = document.getElementById('toggle-btn');
+  const text = document.getElementById('toggle-text');
+  const sub = document.getElementById('toggle-sub');
+  const statVal = document.getElementById('stat-status');
+  if (isOnline) {
+    btn.className = 'toggle-btn online';
+    text.textContent = '🟢 أنت متاح | En ligne';
+    sub.textContent = 'اضغط للاستراحة | Appuyer pour pause';
+    statVal.textContent = '🟢';
+  } else {
+    btn.className = 'toggle-btn offline';
+    text.textContent = '📍 اضغط للعمل | Appuyer pour travailler';
+    sub.textContent = 'سيتم تحديد موقعك | GPS sera activé';
+    statVal.textContent = '⚫';
+  }
+}
+
+async function toggleStatus() {
+  if (!isOnline) {
+    startGPS();
+  } else {
+    stopGPS();
+    await fetch(`/api/driver/${driverPhone}/offline`, { method: 'POST' });
+    isOnline = false;
+    updateToggleBtn();
+    document.getElementById('gps-status').className = 'gps-status inactive';
+    document.getElementById('gps-status').textContent = 'GPS غير نشط | inactif';
+    releaseWakeLock();
+  }
+}
+
+function startGPS() {
+  if (!navigator.geolocation) { alert('GPS غير متاح | GPS non disponible'); return; }
+  document.getElementById('gps-status').textContent = 'جاري تفعيل GPS...';
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    await sendGPSUpdate(pos.coords.latitude, pos.coords.longitude);
+    isOnline = true;
+    updateToggleBtn();
+    requestWakeLock();
+    gpsInterval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
+        e => console.log('GPS err', e),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }, 30000);
+  }, (err) => {
+    alert('❌ الرجاء السماح بالوصول للموقع | Autorisez la localisation');
+  }, { enableHighAccuracy: true, timeout: 15000 });
+}
+
+function stopGPS() {
+  if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; }
+}
+
+async function sendGPSUpdate(lat, lng) {
+  try {
+    await fetch('/api/driver/location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: driverPhone, lat, lng })
+    });
+    document.getElementById('gps-status').className = 'gps-status active';
+    document.getElementById('gps-status').textContent = '✅ GPS نشط | actif';
+    document.getElementById('gps-coords').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    document.getElementById('gps-update').textContent = new Date().toLocaleTimeString('fr-FR');
+  } catch(e) { console.error(e); }
+}
+
+function startPing() {
+  pingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/driver/${driverPhone}/status`);
+      const data = await res.json();
+      if (data.driver) {
+        driverData = { ...driverData, ...data.driver };
+        document.getElementById('stat-courses').textContent = data.todayRides || 0;
+      }
+      if (data.pendingOffer && !currentRide) showRideOffer(data.pendingOffer);
+    } catch(e) {}
+  }, 5000);
+}
+
+function showRideOffer(offer) {
+  currentRide = offer;
+  document.getElementById('ride-notification').style.display = 'block';
+  document.getElementById('ride-distance').textContent = `📍 العميل على بعد ${offer.dist} كم | ${offer.dist} km`;
+  document.getElementById('ride-eta').textContent = `⏱ الوصول في ~${offer.eta} دقيقة | ~${offer.eta} min`;
+  if (navigator.vibrate) navigator.vibrate([500,200,500,200,500]);
+  let sec = 60;
+  rideTimer = setInterval(() => {
+    sec--;
+    document.getElementById('ride-timer').textContent = `ينتهي في ${sec}s | Expire dans ${sec}s`;
+    if (sec <= 0) { clearInterval(rideTimer); hideRideOffer(); }
+  }, 1000);
+}
+
+function hideRideOffer() {
+  currentRide = null;
+  document.getElementById('ride-notification').style.display = 'none';
+  if (rideTimer) { clearInterval(rideTimer); rideTimer = null; }
+}
+
+async function respondRide(response) {
+  if (!currentRide) return;
+  try {
+    await fetch('/api/driver/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: driverPhone, response, rideId: currentRide.rideId })
+    });
+  } catch(e) {}
+  hideRideOffer();
+}
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      document.getElementById('wake-info').textContent = '🔆 الشاشة ستبقى مضاءة تلقائياً | Écran maintenu allumé';
+    }
+  } catch(e) {}
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+function logout() {
+  stopGPS();
+  if (pingInterval) clearInterval(pingInterval);
+  releaseWakeLock();
+  localStorage.removeItem('mlk_driver_phone');
+  driverPhone = ''; driverData = null; isOnline = false;
+  document.getElementById('login-section').style.display = 'block';
+  document.getElementById('dashboard-section').style.display = 'none';
+}
+</script>
+</body>
+</html>
