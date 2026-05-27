@@ -57,6 +57,13 @@ async function offerRide(driver, rideId, clientPhone, clientLat, clientLng) {
   }, 60_000);
 
   pendingOffers.set(driver.phone, { rideId, clientPhone, clientLat, clientLng, timer });
+  // Stocker aussi en DB pour persistance
+  try {
+    await DB.pool.query(
+      `UPDATE rides SET status='offered', driver_phone=$1 WHERE id=$2`,
+      [driver.phone, rideId]
+    );
+  } catch(e) {}
 }
 
 async function retryNextDriver(rideId, clientPhone, clientLat, clientLng, skipPhone) {
@@ -77,8 +84,35 @@ async function retryNextDriver(rideId, clientPhone, clientLat, clientLng, skipPh
 }
 
 async function acceptRide(driverPhone) {
-  const offer = pendingOffers.get(driverPhone);
-  if (!offer) return false;
+  let offer = pendingOffers.get(driverPhone);
+
+  // Si pas en mémoire (après redémarrage), chercher en DB
+  if (!offer) {
+    try {
+      const r = await DB.pool.query(
+        `SELECT * FROM rides WHERE driver_phone=$1 AND status='offered' ORDER BY created_at DESC LIMIT 1`,
+        [driverPhone]
+      );
+      if (r.rows[0]) {
+        const ride = r.rows[0];
+        offer = {
+          rideId: ride.id,
+          clientPhone: ride.client_phone,
+          clientLat: ride.client_lat,
+          clientLng: ride.client_lng,
+          timer: null
+        };
+      }
+    } catch(e) {}
+  }
+
+  if (!offer) {
+    const { sendText } = require('./whapi');
+    await sendText(driverPhone, `⚠️ لا توجد رحلة في الانتظار | Aucune course en attente.
+
+*9* لرؤية حالتك | pour voir votre statut`);
+    return false;
+  }
 
   clearTimeout(offer.timer);
   pendingOffers.delete(driverPhone);
@@ -147,7 +181,19 @@ async function acceptRide(driverPhone) {
 }
 
 async function refuseRide(driverPhone) {
-  const offer = pendingOffers.get(driverPhone);
+  let offer = pendingOffers.get(driverPhone);
+  if (!offer) {
+    try {
+      const r = await DB.pool.query(
+        `SELECT * FROM rides WHERE driver_phone=$1 AND status='offered' ORDER BY created_at DESC LIMIT 1`,
+        [driverPhone]
+      );
+      if (r.rows[0]) {
+        const ride = r.rows[0];
+        offer = { rideId: ride.id, clientPhone: ride.client_phone, clientLat: ride.client_lat, clientLng: ride.client_lng, timer: null };
+      }
+    } catch(e) {}
+  }
   if (!offer) return false;
 
   clearTimeout(offer.timer);

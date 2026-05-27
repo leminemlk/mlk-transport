@@ -408,3 +408,14 @@ DB.init().then(async () => {
     console.log(`🔗 Webhook   : http://localhost:${PORT}/webhook\n`);
   });
 }).catch(err => { console.error('❌ DB Error:', err); process.exit(1); });
+
+// Historique des courses (terminées + annulées)
+app.get('/api/rides/history', async (req, res) => {
+  try {
+    const r = await DB.pool.query(
+      `SELECT * FROM rides WHERE status IN ('completed','cancelled')
+       ORDER BY created_at DESC LIMIT 100`
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});

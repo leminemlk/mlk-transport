@@ -169,7 +169,7 @@ const rides = {
   },
   getActive: async () => {
     const r = await pool.query(
-      `SELECT * FROM rides WHERE status NOT IN ('completed','cancelled') ORDER BY created_at DESC`
+      `SELECT * FROM rides WHERE status NOT IN ('completed','cancelled') ORDER BY created_at DESC LIMIT 50`
     );
     return r.rows;
   },
