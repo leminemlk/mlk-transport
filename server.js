@@ -192,12 +192,11 @@ app.post('/api/drivers/upsert', async (req, res) => {
 
 app.post('/api/drivers/:phone/validate', async (req, res) => {
   try {
-    const vPhone = req.params.phone;
-    await DB.pool.query(`UPDATE drivers SET validated=1 WHERE phone=$1`, [vPhone]);
-    await sendText(vPhone,
-     ✅ *تمت الموافقة !* | *Approuvé !*\n\n` +
-`🎁 3 أشهر مجانية !\n3 mois gratuits !\n\n` +
-`اللبدء :\taper OK}`
+    await DB.pool.query(`UPDATE drivers SET validated=1 WHERE phone=$1`, [req.params.phone]);
+    await sendText(req.params.phone,
+      `✅ *تمت الموافقة !* | *Approuvé !*\n\n` +
+      `🎁 3 أشهر مجانية !\n3 mois gratuits !\n\n` +
+      `افتح الرابط للبدء\nOuvrez ce lien pour commencer`
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
