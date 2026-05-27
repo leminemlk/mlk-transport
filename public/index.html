@@ -1,14 +1,3 @@
-// Protection mot de passe
-const PASS = 'mlkmlkMLK01@';
-const stored = sessionStorage.getItem('mlk_auth');
-if (stored !== PASS) {
-  const entered = prompt('🔐 Mot de passe admin | كلمة المرور:');
-  if (entered !== PASS) {
-    document.body.innerHTML = '<div style="color:red;text-align:center;padding:50px;font-size:20px">❌ Accès refusé</div>';
-    throw new Error('Accès refusé');
-  }
-  sessionStorage.setItem('mlk_auth', PASS);
-}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -125,6 +114,25 @@ tr:hover td { background: #1e2535; }
 <div class="toast" id="toast"></div>
 
 <script>
+// ─── PROTECTION MOT DE PASSE ─────────────────────────────────
+(function() {
+  const PASS = 'mlkmlkMLK01@';
+  const key = 'mlk_admin_auth';
+  if (sessionStorage.getItem(key) !== PASS) {
+    const entered = prompt('🔐 MLK Transport\nMot de passe admin | كلمة المرور:');
+    if (entered !== PASS) {
+      document.documentElement.innerHTML = `
+        <html><body style="background:#0f1117;color:#fc8181;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;flex-direction:column;gap:16px">
+          <div style="font-size:48px">🔒</div>
+          <div style="font-size:20px;font-weight:bold">❌ Accès refusé | وصول مرفوض</div>
+          <button onclick="location.reload()" style="background:#f6c90e;color:#1a1a1a;border:none;padding:10px 24px;border-radius:8px;font-weight:bold;cursor:pointer;font-size:14px">Réessayer | إعادة المحاولة</button>
+        </body></html>`;
+      return;
+    }
+    sessionStorage.setItem(key, PASS);
+  }
+})();
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,
