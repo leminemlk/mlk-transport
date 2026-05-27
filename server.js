@@ -197,7 +197,7 @@ app.post('/api/drivers/:phone/validate', async (req, res) => {
     await sendText(vPhone,
      ✅ *تمت الموافقة !* | *Approuvé !*\n\n` +
 `🎁 3 أشهر مجانية !\n3 mois gratuits !\n\n` +
-`افتح الرابط للبدء :\nOuvrez ce lien pour commencer :\nhttps://mlk-transport-production.up.railway.app/chauffeur.html?phone=${req.params.phone}`
+`اللبدء :\taper OK}`
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
