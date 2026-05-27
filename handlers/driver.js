@@ -7,28 +7,23 @@ async function handleDriver(msg, driver) {
   const text = (msg.text?.body || '').trim().toLowerCase();
   const hasLocation = msg.type === 'location';
 
-  // قبول/رفض course
+  // 1 = قبول | 2 = رفض
   if (pendingOffers.has(phone)) {
-    if (text === '1' || text === 'oui' || text === 'ok' || text === 'نعم') {
-      await acceptRide(phone);
-      return;
-    }
-    if (text === '2' || text === 'non' || text === 'لا') {
-      await refuseRide(phone);
-      return;
-    }
+    if (text === '1') { await acceptRide(phone); return; }
+    if (text === '2') { await refuseRide(phone); return; }
   }
 
-  // نهاية الرحلة
-  if (text === 'fin' || text === 'terminé' || text === 'termine' || text === 'انهاء' || text === 'إنهاء') {
+  // 3 = إنهاء الرحلة
+  if (text === '3') {
     const myRide = await DB.rides.getActiveByDriver(phone);
     if (myRide) {
       await DB.rides.complete(myRide.id);
       await DB.drivers.setStatus('online', phone);
       await sendText(phone,
         `✅ انتهت الرحلة ! | Course terminée !\n\n` +
-        `أنت متاح الآن لاستقبال رحلات جديدة.\n` +
-        `Vous êtes de nouveau en ligne.`
+        `أنت متاح الآن لرحلات جديدة.\n` +
+        `Vous êtes de nouveau en ligne.\n\n` +
+        `*0* → استراحة | Pause`
       );
       const freshDriver = await DB.drivers.get(phone);
       await processQueue(freshDriver);
@@ -38,42 +33,43 @@ async function handleDriver(msg, driver) {
     return;
   }
 
-  // استراحة
-  if (text === 'pause' || text === 'stop' || text === 'استراحة') {
+  // 0 = استراحة / pause
+  if (text === '0') {
     await DB.drivers.setStatus('offline', phone);
     await sendText(phone,
-      `⏸ أنت الآن غير متاح | Vous êtes hors ligne.\n\n` +
-      `أرسل موقعك 📍 للعودة\nEnvoyez votre position 📍 pour reprendre.`
+      `⏸ أنت في وضع الاستراحة | Vous êtes en pause.\n\n` +
+      `أرسل موقعك 📍 للعودة للعمل\n` +
+      `Envoyez votre position 📍 pour reprendre.`
     );
     return;
   }
 
-  // الحالة
-  if (text === 'statut' || text === 'status' || text === 'حالة') {
+  // 9 = معلومات / statut
+  if (text === '9') {
     const now = new Date();
     const hasTrial = driver.trial_until && new Date(driver.trial_until) > now;
     const hasSub = driver.subscription_end && new Date(driver.subscription_end) > now;
     let subInfo = '';
     if (hasTrial) {
       const days = Math.ceil((new Date(driver.trial_until) - now) / 86400000);
-      subInfo = `🎁 فترة تجريبية | Essai gratuit — ${days} jours`;
+      subInfo = `🎁 ${days} أيام مجانية | jours gratuits`;
     } else if (hasSub) {
       const days = Math.ceil((new Date(driver.subscription_end) - now) / 86400000);
-      subInfo = `✅ اشتراك نشط | Abonnement actif — ${days} jours`;
+      subInfo = `✅ اشتراك نشط ${days} يوم | Abonnement ${days}j`;
     } else {
       subInfo = `⚠️ انتهى الاشتراك | Abonnement expiré`;
     }
     const statusEmoji = driver.status === 'online' ? '🟢' : driver.status === 'busy' ? '🟡' : '⚫';
     await sendText(phone,
-      `📊 *حالتك | Votre statut*\n\n` +
-      `👤 ${driver.name}\n` +
-      `${statusEmoji} ${driver.status}\n\n` +
+      `📊 *${driver.name}*\n` +
+      `${statusEmoji} ${driver.status}\n` +
       `${subInfo}\n\n` +
       `📍 موقعك → متاح | Position → en ligne\n` +
-      `*pause* → غير متاح | hors ligne\n` +
-      `*fin* → إنهاء الرحلة | terminer\n` +
-      `*1* → قبول | accepter\n` +
-      `*2* → رفض | refuser`
+      `*1* → قبول رحلة | Accepter\n` +
+      `*2* → رفض رحلة | Refuser\n` +
+      `*3* → إنهاء الرحلة | Terminer\n` +
+      `*0* → استراحة | Pause\n` +
+      `*9* → معلوماتي | Mon statut`
     );
     return;
   }
@@ -88,8 +84,8 @@ async function handleDriver(msg, driver) {
 
     if (!driver.active || (!hasTrial && !hasSub)) {
       await sendText(phone,
-        `⚠️ انتهى اشتراكك | Abonnement expiré !\n\n` +
-        `تواصل مع MLK Transport\n` +
+        `⚠️ انتهى اشتراكك | Abonnement expiré !\n` +
+        `تواصل مع الإدارة | Contactez MLK Transport.\n` +
         `💰 500 MRU/semaine`
       );
       return;
@@ -100,9 +96,11 @@ async function handleDriver(msg, driver) {
 
     await sendText(phone,
       `✅ أنت متاح الآن ! | Vous êtes en ligne !\n\n` +
-      `*pause* → استراحة | hors ligne\n` +
-      `*fin* → إنهاء الرحلة | terminer course\n` +
-      `*حالة* | *statut* → معلوماتك`
+      `*1* → قبول | Accepter\n` +
+      `*2* → رفض | Refuser\n` +
+      `*3* → إنهاء الرحلة | Terminer\n` +
+      `*0* → استراحة | Pause\n` +
+      `*9* → معلوماتي | Statut`
     );
 
     if (wasOffline) {
@@ -115,12 +113,12 @@ async function handleDriver(msg, driver) {
   // مساعدة
   await sendText(phone,
     `🚖 *MLK Transport — سائق | Chauffeur*\n\n` +
-    `📍 أرسل موقعك → متاح | Position → en ligne\n` +
-    `*1* → قبول رحلة | accepter\n` +
-    `*2* → رفض رحلة | refuser\n` +
-    `*fin* → إنهاء الرحلة | terminer\n` +
-    `*pause* → استراحة | hors ligne\n` +
-    `*حالة* | *statut* → معلوماتك`
+    `📍 أرسل موقعك → متاح | Position → en ligne\n\n` +
+    `*1* → قبول رحلة | Accepter course\n` +
+    `*2* → رفض رحلة | Refuser course\n` +
+    `*3* → إنهاء الرحلة | Terminer course\n` +
+    `*0* → استراحة | Pause\n` +
+    `*9* → معلوماتي | Mon statut`
   );
 }
 
