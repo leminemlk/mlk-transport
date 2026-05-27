@@ -196,7 +196,7 @@ app.post('/api/drivers/:phone/validate', async (req, res) => {
     await sendText(req.params.phone,
       `✅ *تمت الموافقة !* | *Approuvé !*\n\n` +
       `🎁 3 أشهر مجانية !\n3 mois gratuits !\n\n` +
-      `افتح الرابط للبدء\nOuvrez ce lien pour commencer`
+       للبدء\nTaper OK pour commencer`
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
