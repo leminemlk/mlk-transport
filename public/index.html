@@ -4,75 +4,98 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MLK Transport — Admin</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
 /* LOGIN */
-#login-page {
-  display: flex; align-items: center; justify-content: center;
-  min-height: 100vh;
-}
-.login-card {
-  background: #1a1f2e; border: 1px solid #2d3748;
-  border-radius: 20px; padding: 40px 32px;
-  max-width: 360px; width: 100%; text-align: center;
-}
-.login-card h1 { color: #f6c90e; font-size: 24px; margin-bottom: 4px; }
-.login-card p { color: #718096; font-size: 13px; margin-bottom: 28px; }
-.login-card input {
-  width: 100%; background: #0f1117; border: 1px solid #2d3748;
-  border-radius: 10px; color: #e2e8f0; padding: 14px;
-  font-size: 16px; margin-bottom: 14px; text-align: center;
-}
-.login-card input:focus { outline: none; border-color: #f6c90e; }
-.login-card button {
-  width: 100%; background: #f6c90e; color: #1a1a1a;
-  border: none; border-radius: 10px; padding: 14px;
-  font-size: 16px; font-weight: 800; cursor: pointer;
-}
-.login-error { color: #fc8181; font-size: 13px; margin-top: 10px; display: none; }
-
-/* DASHBOARD */
-#dashboard-page { display: none; }
-.header { background: #1a1f2e; border-bottom: 2px solid #f6c90e; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
-.header h1 { font-size: 22px; color: #f6c90e; font-weight: 700; }
-.live-dot { width: 8px; height: 8px; background: #48bb78; border-radius: 50%; animation: pulse 2s infinite; margin-left: auto; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.logout-btn { background: #2d3748; color: #a0aec0; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
-.stat-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 20px; text-align: center; }
-.stat-value { font-size: 36px; font-weight: 800; color: #f6c90e; }
-.stat-label { font-size: 12px; color: #718096; margin-top: 4px; }
-.section { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
-.section-header { padding: 16px 20px; border-bottom: 1px solid #2d3748; display: flex; align-items: center; justify-content: space-between; }
-.section-title { font-size: 15px; font-weight: 600; }
-table { width: 100%; border-collapse: collapse; }
-th { padding: 10px 16px; text-align: left; font-size: 11px; color: #718096; text-transform: uppercase; border-bottom: 1px solid #2d3748; }
-td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #1e2535; vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: #1e2535; }
-.btn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; }
-.btn-pay { background: #2d6a4f; color: #b7e4c7; }
-.btn-block { background: #6b1f1f; color: #fc8181; }
-.btn-unblock { background: #1f3d6b; color: #90cdf4; }
-.btn-validate { background: #f6c90e; color: #1a1a1a; }
-.btn-refresh { background: #2d3748; color: #a0aec0; padding: 6px 14px; }
-.btn-broadcast { background: #f6c90e; color: #1a1a1a; padding: 8px 20px; font-size: 13px; }
-.status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.status-online { background: #1a3a2a; color: #48bb78; }
-.status-offline { background: #2d3748; color: #718096; }
-.status-busy { background: #3a2a0a; color: #f6ad55; }
-.sub-ok { color: #68d391; font-size: 11px; }
-.sub-exp { color: #fc8181; font-size: 11px; }
-.empty { padding: 40px; text-align: center; color: #4a5568; }
-.broadcast-box { padding: 20px; }
-.broadcast-box textarea { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; color: #e2e8f0; padding: 12px; font-size: 13px; resize: vertical; min-height: 80px; font-family: inherit; }
-.toast { position: fixed; bottom: 24px; right: 24px; background: #2d6a4f; color: #b7e4c7; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 100; transform: translateY(80px); transition: transform .3s; opacity: 0; }
-.toast.show { transform: translateY(0); opacity: 1; }
-.clim-yes { color: #68d391; }
-.clim-no { color: #718096; }
+#login-page{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.login-card{background:#1a1f2e;border:1px solid #2d3748;border-radius:20px;padding:40px 32px;max-width:360px;width:100%;text-align:center}
+.login-card h1{color:#f6c90e;font-size:24px;margin-bottom:4px}
+.login-card p{color:#718096;font-size:13px;margin-bottom:28px}
+.login-card input{width:100%;background:#0f1117;border:1px solid #2d3748;border-radius:10px;color:#e2e8f0;padding:14px;font-size:16px;margin-bottom:14px;text-align:center}
+.login-card input:focus{outline:none;border-color:#f6c90e}
+.login-card button{width:100%;background:#f6c90e;color:#1a1a1a;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:800;cursor:pointer}
+.login-error{color:#fc8181;font-size:13px;margin-top:10px;display:none}
+/* LAYOUT */
+#dashboard-page{display:none}
+.header{background:#1a1f2e;border-bottom:2px solid #f6c90e;padding:14px 24px;display:flex;align-items:center;gap:12px}
+.header h1{font-size:20px;color:#f6c90e;font-weight:700}
+.live-dot{width:8px;height:8px;background:#48bb78;border-radius:50%;animation:pulse 2s infinite;margin-left:auto}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.logout-btn{background:#2d3748;color:#a0aec0;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+/* TABS */
+.tabs{background:#1a1f2e;border-bottom:1px solid #2d3748;display:flex;gap:0;padding:0 24px}
+.tab{padding:12px 20px;cursor:pointer;font-size:13px;font-weight:500;color:#718096;border-bottom:2px solid transparent;transition:all .2s}
+.tab.active{color:#f6c90e;border-bottom-color:#f6c90e}
+.tab:hover{color:#e2e8f0}
+.tab-content{display:none;padding:24px;max-width:1400px;margin:0 auto}
+.tab-content.active{display:block}
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:18px;text-align:center}
+.stat-value{font-size:32px;font-weight:800;color:#f6c90e}
+.stat-label{font-size:11px;color:#718096;margin-top:4px}
+/* SECTION */
+.section{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;margin-bottom:20px;overflow:hidden}
+.section-header{padding:14px 20px;border-bottom:1px solid #2d3748;display:flex;align-items:center;justify-content:space-between}
+.section-title{font-size:14px;font-weight:600}
+/* TABLE */
+table{width:100%;border-collapse:collapse}
+th{padding:10px 14px;text-align:left;font-size:11px;color:#718096;text-transform:uppercase;border-bottom:1px solid #2d3748}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid #1e2535;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#1e2535}
+/* BUTTONS */
+.btn{padding:6px 12px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:opacity .2s}
+.btn:hover{opacity:.8}
+.btn-green{background:#2d6a4f;color:#b7e4c7}
+.btn-red{background:#6b1f1f;color:#fc8181}
+.btn-blue{background:#1f3d6b;color:#90cdf4}
+.btn-yellow{background:#f6c90e;color:#1a1a1a}
+.btn-gray{background:#2d3748;color:#a0aec0}
+.btn-orange{background:#7b3f00;color:#f6ad55}
+/* STATUS */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-online{background:#1a3a2a;color:#48bb78}
+.badge-offline{background:#2d3748;color:#718096}
+.badge-busy{background:#3a2a0a;color:#f6ad55}
+.badge-blocked{background:#3a1a1a;color:#fc8181}
+.badge-pending{background:#3a2a0a;color:#f6c90e}
+.sub-ok{color:#68d391;font-size:11px}
+.sub-exp{color:#fc8181;font-size:11px}
+/* MAP */
+#map{height:450px;border-radius:8px;overflow:hidden}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1a1f2e;border:1px solid #2d3748;border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:90vh;overflow-y:auto}
+.modal h2{color:#f6c90e;font-size:18px;margin-bottom:20px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;color:#a0aec0;font-size:12px;margin-bottom:6px}
+.form-group input,.form-group select{width:100%;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:14px}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:#f6c90e}
+.form-group select option{background:#1a1f2e}
+.modal-btns{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+/* BROADCAST */
+.broadcast-box{padding:20px}
+.broadcast-box textarea{width:100%;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;padding:12px;font-size:13px;resize:vertical;min-height:80px;font-family:inherit}
+/* SETTINGS */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:20px}
+.setting-item{background:#0f1117;border:1px solid #2d3748;border-radius:10px;padding:16px}
+.setting-label{color:#a0aec0;font-size:12px;margin-bottom:8px}
+.setting-value{display:flex;gap:8px;align-items:center}
+.setting-value input{flex:1;background:#1a1f2e;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;padding:8px;font-size:14px}
+/* EMPTY */
+.empty{padding:40px;text-align:center;color:#4a5568}
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:#2d6a4f;color:#b7e4c7;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:2000;transform:translateY(80px);transition:transform .3s;opacity:0}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.error{background:#6b1f1f;color:#fc8181}
+.clim-yes{color:#68d391}
+.clim-no{color:#718096}
+.flex-gap{display:flex;gap:6px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -83,10 +106,9 @@ tr:hover td { background: #1e2535; }
     <div style="font-size:56px;margin-bottom:12px">🚖</div>
     <h1>MLK Transport</h1>
     <p>Dashboard Administrateur<br>لوحة تحكم المشرف</p>
-    <input type="password" id="pass-input" placeholder="🔐 Mot de passe | كلمة المرور"
-      onkeydown="if(event.key==='Enter') checkPass()">
-    <button onclick="checkPass()">Connexion | دخول →</button>
-    <div class="login-error" id="login-error">❌ Mot de passe incorrect | كلمة مرور خاطئة</div>
+    <input type="password" id="pass-input" placeholder="🔐 Mot de passe" onkeydown="if(event.key==='Enter')checkPass()">
+    <button onclick="checkPass()">Connexion →</button>
+    <div class="login-error" id="login-error">❌ Mot de passe incorrect</div>
   </div>
 </div>
 
@@ -94,60 +116,189 @@ tr:hover td { background: #1e2535; }
 <div id="dashboard-page">
   <div class="header">
     <h1>🚖 MLK Transport</h1>
-    <p style="color:#718096;font-size:12px">Dashboard Admin</p>
+    <p style="color:#718096;font-size:12px">Admin</p>
     <div class="live-dot"></div>
     <button class="logout-btn" onclick="logout()">⬅ Déconnexion</button>
   </div>
 
-  <div class="container">
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('overview')">📊 Vue d'ensemble</div>
+    <div class="tab" onclick="showTab('map')">🗺️ Carte</div>
+    <div class="tab" onclick="showTab('drivers')">🚗 Chauffeurs</div>
+    <div class="tab" onclick="showTab('clients')">👥 Clients</div>
+    <div class="tab" onclick="showTab('rides')">📍 Courses</div>
+    <div class="tab" onclick="showTab('settings')">⚙️ Paramètres</div>
+  </div>
+
+  <!-- VUE D'ENSEMBLE -->
+  <div class="tab-content active" id="tab-overview">
     <div class="stats">
       <div class="stat-card"><div class="stat-value" id="s-drivers">–</div><div class="stat-label">Chauffeurs</div></div>
       <div class="stat-card"><div class="stat-value" id="s-online">–</div><div class="stat-label">En ligne</div></div>
       <div class="stat-card"><div class="stat-value" id="s-pending">–</div><div class="stat-label">En attente</div></div>
       <div class="stat-card"><div class="stat-value" id="s-today">–</div><div class="stat-label">Courses/jour</div></div>
+      <div class="stat-card"><div class="stat-value" id="s-total">–</div><div class="stat-label">Total courses</div></div>
       <div class="stat-card"><div class="stat-value" id="s-queue">–</div><div class="stat-label">File attente</div></div>
     </div>
 
-    <!-- En attente validation -->
+    <!-- Pending -->
     <div class="section" id="pending-section" style="display:none">
-      <div class="section-header">
-        <span class="section-title">⏳ En attente de validation</span>
-        <button class="btn btn-refresh" onclick="loadAll()">↻</button>
-      </div>
-      <table><thead><tr><th>Nom</th><th>Téléphone</th><th>Clim</th><th>Action</th></tr></thead>
+      <div class="section-header"><span class="section-title">⏳ En attente de validation</span></div>
+      <table><thead><tr><th>Nom</th><th>Téléphone</th><th>Clim</th><th>Actions</th></tr></thead>
       <tbody id="pending-table"></tbody></table>
     </div>
 
-    <!-- Chauffeurs -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title">🚗 Chauffeurs actifs</span>
-        <button class="btn btn-refresh" onclick="loadAll()">↻ Actualiser</button>
-      </div>
-      <table><thead><tr><th>Nom</th><th>Téléphone</th><th>Statut</th><th>Clim</th><th>Abonnement</th><th>Actions</th></tr></thead>
-      <tbody id="drivers-table"></tbody></table>
-    </div>
-
-    <!-- File d'attente -->
+    <!-- File attente -->
     <div class="section">
       <div class="section-header"><span class="section-title">⏳ File d'attente clients</span></div>
       <div id="queue-list"></div>
-    </div>
-
-    <!-- Courses -->
-    <div class="section">
-      <div class="section-header"><span class="section-title">📍 Courses en cours</span></div>
-      <table><thead><tr><th>Client</th><th>Chauffeur</th><th>Statut</th><th>Heure</th></tr></thead>
-      <tbody id="rides-table"></tbody></table>
     </div>
 
     <!-- Broadcast -->
     <div class="section">
       <div class="section-header"><span class="section-title">📢 Message à tous les chauffeurs</span></div>
       <div class="broadcast-box">
-        <textarea id="bc-text" placeholder="Message..."></textarea><br><br>
-        <button class="btn btn-broadcast" onclick="sendBroadcast()">📤 Envoyer à tous</button>
+        <textarea id="bc-text" placeholder="Message en arabe/français..."></textarea><br><br>
+        <button class="btn btn-yellow" onclick="sendBroadcast()">📤 Envoyer à tous</button>
       </div>
+    </div>
+  </div>
+
+  <!-- CARTE -->
+  <div class="tab-content" id="tab-map">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">🗺️ Positions des chauffeurs en temps réel</span>
+        <button class="btn btn-gray" onclick="refreshMap()">↻ Actualiser</button>
+      </div>
+      <div style="padding:16px">
+        <div id="map"></div>
+        <div style="margin-top:12px;display:flex;gap:16px;font-size:12px;color:#718096">
+          <span>🟢 En ligne</span>
+          <span>🟡 En course</span>
+          <span>⚫ Hors ligne</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAUFFEURS -->
+  <div class="tab-content" id="tab-drivers">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">🚗 Gestion Chauffeurs</span>
+        <div class="flex-gap">
+          <button class="btn btn-yellow" onclick="openAddDriver()">+ Ajouter</button>
+          <button class="btn btn-gray" onclick="loadDrivers()">↻</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Nom</th><th>Téléphone</th><th>Statut</th><th>Clim</th><th>Abonnement</th><th>Validé</th><th>Actions</th></tr></thead>
+        <tbody id="drivers-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CLIENTS -->
+  <div class="tab-content" id="tab-clients">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">👥 Clients enregistrés</span>
+        <button class="btn btn-gray" onclick="loadClients()">↻</button>
+      </div>
+      <table>
+        <thead><tr><th>Téléphone</th><th>Nom</th><th>Inscrit le</th><th>Actions</th></tr></thead>
+        <tbody id="clients-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COURSES -->
+  <div class="tab-content" id="tab-rides">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📍 Courses actives</span>
+        <button class="btn btn-gray" onclick="loadRides()">↻</button>
+      </div>
+      <table>
+        <thead><tr><th>Client</th><th>Chauffeur</th><th>Statut</th><th>Heure</th></tr></thead>
+        <tbody id="rides-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PARAMÈTRES -->
+  <div class="tab-content" id="tab-settings">
+    <div class="section">
+      <div class="section-header"><span class="section-title">⚙️ Paramètres du service</span></div>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <div class="setting-label">💰 Prix abonnement hebdomadaire (MRU)</div>
+          <div class="setting-value">
+            <input type="number" id="set-price" value="500">
+            <button class="btn btn-yellow" onclick="saveSetting('price')">Sauver</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-label">🎁 Durée période d'essai (jours)</div>
+          <div class="setting-value">
+            <input type="number" id="set-trial" value="90">
+            <button class="btn btn-yellow" onclick="saveSetting('trial')">Sauver</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-label">📍 Rayon de recherche chauffeur (km)</div>
+          <div class="setting-value">
+            <input type="number" id="set-radius" value="5">
+            <button class="btn btn-yellow" onclick="saveSetting('radius')">Sauver</button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-label">⏱ Timeout offre chauffeur (secondes)</div>
+          <div class="setting-value">
+            <input type="number" id="set-timeout" value="60">
+            <button class="btn btn-yellow" onclick="saveSetting('timeout')">Sauver</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUTER/MODIFIER CHAUFFEUR -->
+<div class="modal-overlay" id="driver-modal">
+  <div class="modal">
+    <h2 id="modal-title">➕ Ajouter un chauffeur</h2>
+    <input type="hidden" id="modal-phone-orig">
+    <div class="form-group">
+      <label>Nom complet | الاسم الكامل</label>
+      <input type="text" id="modal-name" placeholder="Ahmed Ould...">
+    </div>
+    <div class="form-group">
+      <label>Téléphone (sans +) | الهاتف</label>
+      <input type="tel" id="modal-phone" placeholder="22241XXXXXX">
+    </div>
+    <div class="form-group">
+      <label>Climatisation | التكييف</label>
+      <select id="modal-clim">
+        <option value="false">❌ Non | لا</option>
+        <option value="true">✅ Oui | نعم</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Abonnement — prolonger de (jours)</label>
+      <input type="number" id="modal-days" placeholder="7" min="1" max="365">
+    </div>
+    <div class="form-group">
+      <label>Statut</label>
+      <select id="modal-validated">
+        <option value="1">✅ Validé</option>
+        <option value="0">⏳ En attente</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-gray" onclick="closeModal('driver-modal')">Annuler</button>
+      <button class="btn btn-yellow" onclick="saveDriver()">💾 Sauvegarder</button>
     </div>
   </div>
 </div>
@@ -156,7 +307,10 @@ tr:hover td { background: #1e2535; }
 
 <script>
 const PASS = 'mlkmlkMLK01@';
+let map = null;
+let mapMarkers = [];
 
+// ─── AUTH ─────────────────────────────────────────────────────
 function checkPass() {
   const val = document.getElementById('pass-input').value;
   if (val === PASS) {
@@ -165,42 +319,46 @@ function checkPass() {
   } else {
     document.getElementById('login-error').style.display = 'block';
     document.getElementById('pass-input').value = '';
-    document.getElementById('pass-input').focus();
   }
 }
-
 function showDashboard() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('dashboard-page').style.display = 'block';
   loadAll();
   setInterval(loadAll, 15000);
 }
-
-function logout() {
-  sessionStorage.removeItem('mlk_ok');
-  location.reload();
-}
-
-// Vérifier si déjà connecté
+function logout() { sessionStorage.removeItem('mlk_ok'); location.reload(); }
 if (sessionStorage.getItem('mlk_ok') === '1') showDashboard();
 
-// ─── DATA ─────────────────────────────────────────────────────
+// ─── TABS ─────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector(`#tab-${name}`).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'map') { initMap(); refreshMap(); }
+  if (name === 'clients') loadClients();
+  if (name === 'rides') loadRides();
+}
 
+// ─── API ──────────────────────────────────────────────────────
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...opts.headers } });
   return res.json();
 }
 
+// ─── LOAD ALL ─────────────────────────────────────────────────
 async function loadAll() {
-  await Promise.all([loadStats(), loadDrivers(), loadRides(), loadQueue()]);
+  await Promise.all([loadStats(), loadDrivers(), loadQueue()]);
 }
 
 async function loadStats() {
   const [stats, queue, drivers] = await Promise.all([api('/api/stats'), api('/api/queue'), api('/api/drivers')]);
   document.getElementById('s-drivers').textContent = stats.drivers?.total || 0;
   document.getElementById('s-online').textContent = stats.drivers?.online || 0;
-  document.getElementById('s-pending').textContent = drivers.filter ? drivers.filter(d => !d.validated).length : 0;
+  document.getElementById('s-pending').textContent = Array.isArray(drivers) ? drivers.filter(d => !d.validated).length : 0;
   document.getElementById('s-today').textContent = stats.rides?.today || 0;
+  document.getElementById('s-total').textContent = stats.rides?.total || 0;
   document.getElementById('s-queue').textContent = queue.length || 0;
 }
 
@@ -209,9 +367,6 @@ async function loadDrivers() {
   if (!Array.isArray(drivers)) return;
   const now = new Date();
   const pending = drivers.filter(d => !d.validated);
-  const active = drivers.filter(d => d.validated);
-
-  // Pending
   const ps = document.getElementById('pending-section');
   ps.style.display = pending.length ? 'block' : 'none';
   document.getElementById('pending-table').innerHTML = pending.map(d => `
@@ -219,39 +374,57 @@ async function loadDrivers() {
       <td><strong>${d.name}</strong></td>
       <td>+${d.phone}</td>
       <td class="${d.clim ? 'clim-yes' : 'clim-no'}">${d.clim ? '❄️ Oui' : '– Non'}</td>
-      <td><button class="btn btn-validate" onclick="validateDriver('${d.phone}')">✅ Valider</button></td>
+      <td class="flex-gap">
+        <button class="btn btn-yellow" onclick="validateDriver('${d.phone}')">✅ Valider</button>
+        <button class="btn btn-blue" onclick="editDriver(${JSON.stringify(d).replace(/"/g,'&quot;')})">✏️</button>
+        <button class="btn btn-red" onclick="deleteDriver('${d.phone}')">🗑</button>
+      </td>
     </tr>`).join('');
 
-  // Active
   const dt = document.getElementById('drivers-table');
-  if (!active.length) { dt.innerHTML = '<tr><td colspan="6" class="empty">Aucun chauffeur validé</td></tr>'; return; }
-  dt.innerHTML = active.map(d => {
-    const s = !d.active ? `<span class="status" style="background:#3a1a1a;color:#fc8181">⛔ Bloqué</span>`
-      : d.status === 'online' ? `<span class="status status-online">🟢 En ligne</span>`
-      : d.status === 'busy' ? `<span class="status status-busy">🟡 Course</span>`
-      : `<span class="status status-offline">⚫ Hors ligne</span>`;
+  if (!drivers.length) { dt.innerHTML = '<tr><td colspan="7" class="empty">Aucun chauffeur</td></tr>'; return; }
+  dt.innerHTML = drivers.map(d => {
+    const s = !d.active ? `<span class="badge badge-blocked">⛔ Bloqué</span>`
+      : d.status === 'online' ? `<span class="badge badge-online">🟢 En ligne</span>`
+      : d.status === 'busy' ? `<span class="badge badge-busy">🟡 Course</span>`
+      : `<span class="badge badge-offline">⚫ Hors ligne</span>`;
     let sub = '';
-    if (d.hasTrial && d.trial_until) sub = `<span class="sub-ok">🎁 Essai (${Math.ceil((new Date(d.trial_until)-now)/86400000)}j)</span>`;
-    else if (d.hasSub && d.subscription_end) sub = `<span class="sub-ok">✅ (${Math.ceil((new Date(d.subscription_end)-now)/86400000)}j)</span>`;
+    if (d.hasTrial && d.trial_until) sub = `<span class="sub-ok">🎁 ${Math.ceil((new Date(d.trial_until)-now)/86400000)}j</span>`;
+    else if (d.hasSub && d.subscription_end) sub = `<span class="sub-ok">✅ ${Math.ceil((new Date(d.subscription_end)-now)/86400000)}j</span>`;
     else sub = `<span class="sub-exp">⚠️ Expiré</span>`;
-    const blk = !d.active
-      ? `<button class="btn btn-unblock" onclick="unblockDriver('${d.phone}')">✅ Débloquer</button>`
-      : `<button class="btn btn-block" onclick="blockDriver('${d.phone}')">⛔ Bloquer</button>`;
     return `<tr>
       <td><strong>${d.name}</strong></td>
       <td>+${d.phone}</td>
       <td>${s}</td>
       <td class="${d.clim ? 'clim-yes' : 'clim-no'}">${d.clim ? '❄️' : '–'}</td>
       <td>${sub}</td>
-      <td style="display:flex;gap:6px"><button class="btn btn-pay" onclick="payDriver('${d.phone}')">💰 500 MRU</button>${blk}</td>
+      <td>${d.validated ? '✅' : '<span class="badge badge-pending">⏳</span>'}</td>
+      <td class="flex-gap">
+        <button class="btn btn-green" onclick="payDriver('${d.phone}')">💰</button>
+        <button class="btn btn-blue" onclick="editDriver(${JSON.stringify(d).replace(/"/g,'&quot;')})">✏️</button>
+        ${!d.active ? `<button class="btn btn-blue" onclick="unblockDriver('${d.phone}')">✅</button>` : `<button class="btn btn-red" onclick="blockDriver('${d.phone}')">⛔</button>`}
+        <button class="btn btn-red" onclick="deleteDriver('${d.phone}')">🗑</button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+async function loadClients() {
+  const clients = await api('/api/clients');
+  const tb = document.getElementById('clients-table');
+  if (!Array.isArray(clients) || !clients.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Aucun client</td></tr>'; return; }
+  tb.innerHTML = clients.map(c => `<tr>
+    <td>📞 +${c.phone}</td>
+    <td>${c.name || '–'}</td>
+    <td style="color:#718096;font-size:12px">${formatDate(c.created_at)}</td>
+    <td><button class="btn btn-red" onclick="deleteClient('${c.phone}')">🗑 Supprimer</button></td>
+  </tr>`).join('');
 }
 
 async function loadRides() {
   const rides = await api('/api/rides');
   const tb = document.getElementById('rides-table');
-  if (!Array.isArray(rides) || !rides.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Aucune course</td></tr>'; return; }
+  if (!Array.isArray(rides) || !rides.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Aucune course active</td></tr>'; return; }
   tb.innerHTML = rides.map(r => `<tr>
     <td>📞 ${r.client_phone}</td>
     <td>${r.driver_phone ? '🚗 ' + r.driver_phone : '—'}</td>
@@ -271,24 +444,110 @@ async function loadQueue() {
     </div>`).join('');
 }
 
+// ─── CARTE ────────────────────────────────────────────────────
+function initMap() {
+  if (map) return;
+  map = L.map('map').setView([18.0735, -15.9582], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+}
+
+async function refreshMap() {
+  if (!map) return;
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
+  const drivers = await api('/api/drivers');
+  if (!Array.isArray(drivers)) return;
+  drivers.filter(d => d.lat && d.lng).forEach(d => {
+    const color = d.status === 'online' ? '🟢' : d.status === 'busy' ? '🟡' : '⚫';
+    const icon = L.divIcon({
+      html: `<div style="background:${d.status==='online'?'#48bb78':d.status==='busy'?'#f6ad55':'#718096'};width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,
+      className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+    });
+    const marker = L.marker([d.lat, d.lng], { icon })
+      .bindPopup(`<b>${d.name}</b><br>+${d.phone}<br>${color} ${d.status}<br>${d.clim ? '❄️ Clim' : ''}`)
+      .addTo(map);
+    mapMarkers.push(marker);
+  });
+}
+
+// ─── ACTIONS CHAUFFEURS ───────────────────────────────────────
+function openAddDriver() {
+  document.getElementById('modal-title').textContent = '➕ Ajouter un chauffeur';
+  document.getElementById('modal-name').value = '';
+  document.getElementById('modal-phone').value = '';
+  document.getElementById('modal-phone').disabled = false;
+  document.getElementById('modal-phone-orig').value = '';
+  document.getElementById('modal-clim').value = 'false';
+  document.getElementById('modal-days').value = '';
+  document.getElementById('modal-validated').value = '1';
+  document.getElementById('driver-modal').classList.add('show');
+}
+
+function editDriver(d) {
+  document.getElementById('modal-title').textContent = '✏️ Modifier le chauffeur';
+  document.getElementById('modal-name').value = d.name || '';
+  document.getElementById('modal-phone').value = d.phone || '';
+  document.getElementById('modal-phone').disabled = true;
+  document.getElementById('modal-phone-orig').value = d.phone || '';
+  document.getElementById('modal-clim').value = d.clim ? 'true' : 'false';
+  document.getElementById('modal-days').value = '';
+  document.getElementById('modal-validated').value = d.validated ? '1' : '0';
+  document.getElementById('driver-modal').classList.add('show');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+async function saveDriver() {
+  const phoneOrig = document.getElementById('modal-phone-orig').value;
+  const phone = document.getElementById('modal-phone').value.trim().replace(/\D/g,'');
+  const name = document.getElementById('modal-name').value.trim();
+  const clim = document.getElementById('modal-clim').value === 'true';
+  const days = parseInt(document.getElementById('modal-days').value) || 0;
+  const validated = parseInt(document.getElementById('modal-validated').value);
+  if (!phone || !name) { toast('❌ Remplissez tous les champs', true); return; }
+
+  await fetch('/api/drivers/upsert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, name, clim, days, validated, phoneOrig })
+  });
+  closeModal('driver-modal');
+  toast('✅ Chauffeur sauvegardé !');
+  loadDrivers();
+}
+
 async function validateDriver(phone) {
-  if (!confirm(`Valider +${phone} ?`)) return;
   await fetch(`/api/drivers/${phone}/validate`, { method: 'POST' });
-  toast('✅ Chauffeur validé !'); loadAll();
+  toast('✅ Chauffeur validé et notifié !'); loadDrivers();
 }
 async function payDriver(phone) {
-  if (!confirm(`500 MRU pour +${phone} ?`)) return;
   await fetch(`/api/drivers/${phone}/pay`, { method: 'POST' });
-  toast('✅ Paiement validé !'); loadAll();
+  toast('✅ 500 MRU validés !'); loadDrivers();
 }
 async function blockDriver(phone) {
+  if (!confirm(`Bloquer +${phone} ?`)) return;
   await fetch(`/api/drivers/${phone}/block`, { method: 'POST' });
-  toast('⛔ Bloqué'); loadAll();
+  toast('⛔ Bloqué'); loadDrivers();
 }
 async function unblockDriver(phone) {
   await fetch(`/api/drivers/${phone}/unblock`, { method: 'POST' });
-  toast('✅ Débloqué'); loadAll();
+  toast('✅ Débloqué'); loadDrivers();
 }
+async function deleteDriver(phone) {
+  if (!confirm(`Supprimer définitivement +${phone} ?`)) return;
+  await fetch(`/api/drivers/${phone}`, { method: 'DELETE' });
+  toast('🗑 Chauffeur supprimé'); loadDrivers();
+}
+async function deleteClient(phone) {
+  if (!confirm(`Supprimer le client +${phone} ?`)) return;
+  await fetch(`/api/clients/${phone}`, { method: 'DELETE' });
+  toast('🗑 Client supprimé'); loadClients();
+}
+
 async function sendBroadcast() {
   const msg = document.getElementById('bc-text').value.trim();
   if (!msg) return;
@@ -297,9 +556,17 @@ async function sendBroadcast() {
   document.getElementById('bc-text').value = '';
 }
 
-function toast(msg) {
+function saveSetting(key) {
+  const val = document.getElementById(`set-${key}`).value;
+  localStorage.setItem(`mlk_set_${key}`, val);
+  toast(`✅ ${key} = ${val} sauvegardé localement`);
+}
+
+// ─── UTILS ────────────────────────────────────────────────────
+function toast(msg, err = false) {
   const el = document.getElementById('toast');
-  el.textContent = msg; el.className = 'toast show';
+  el.textContent = msg;
+  el.className = 'toast show' + (err ? ' error' : '');
   setTimeout(() => el.className = 'toast', 3000);
 }
 function timeAgo(d) {
@@ -308,6 +575,10 @@ function timeAgo(d) {
   if (diff < 1) return 'À l\'instant';
   if (diff < 60) return `${Math.floor(diff)} min`;
   return `${Math.floor(diff/60)}h`;
+}
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit' });
 }
 </script>
 </body>
