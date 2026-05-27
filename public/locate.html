@@ -66,13 +66,11 @@ async function sendLocation() {
         if (data.ok) {
           showStatus('success',
             `✅ <strong>تم طلب التاكسي ! | Taxi appelé !</strong><br><br>` +
-            `ستصلك رسالة على واتساب | Vous recevrez un message WhatsApp.`
+            `ستصلك رسالة واتساب عند قبول السائق 📱<br>` +
+            `Vous recevrez un message WhatsApp dès qu'un chauffeur accepte.`
           );
           btn.innerHTML = '<div>✓ تم الطلب | Demande envoyée</div>';
-          // Rediriger vers WhatsApp après 2 secondes
-          setTimeout(() => {
-            window.location.href = `https://wa.me/${phone}`;
-          }, 2500);
+          btn.style.background = 'linear-gradient(135deg,#1a3a2a,#0f2a1a)';
         } else throw new Error(data.error);
       } catch(e) {
         showStatus('error', '❌ خطأ | Erreur. Réessayez.');

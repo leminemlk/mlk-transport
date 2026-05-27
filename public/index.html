@@ -127,6 +127,7 @@ tr:hover td{background:#1e2535}
     <div class="tab" onclick="showTab('drivers')">🚗 Chauffeurs</div>
     <div class="tab" onclick="showTab('clients')">👥 Clients</div>
     <div class="tab" onclick="showTab('rides')">📍 Courses</div>
+    <div class="tab" onclick="showTab('history')">📋 Historique</div>
     <div class="tab" onclick="showTab('settings')">⚙️ Paramètres</div>
   </div>
 
@@ -223,6 +224,20 @@ tr:hover td{background:#1e2535}
       <table>
         <thead><tr><th>Client</th><th>Chauffeur</th><th>Statut</th><th>Heure</th></tr></thead>
         <tbody id="rides-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- HISTORIQUE -->
+  <div class="tab-content" id="tab-history">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">📋 Historique des courses</span>
+        <button class="btn btn-gray" onclick="loadHistory()">↻ Actualiser</button>
+      </div>
+      <table>
+        <thead><tr><th>Client</th><th>Chauffeur</th><th>Statut</th><th>Date</th><th>Durée</th></tr></thead>
+        <tbody id="history-table"></tbody>
       </table>
     </div>
   </div>
@@ -337,6 +352,7 @@ function showTab(name) {
   document.querySelector(`#tab-${name}`).classList.add('active');
   event.target.classList.add('active');
   if (name === 'map') { initMap(); refreshMap(); }
+  if (name === 'history') loadHistory();
   if (name === 'clients') loadClients();
   if (name === 'rides') loadRides();
 }
@@ -419,6 +435,34 @@ async function loadClients() {
     <td style="color:#718096;font-size:12px">${formatDate(c.created_at)}</td>
     <td><button class="btn btn-red" onclick="deleteClient('${c.phone}')">🗑 Supprimer</button></td>
   </tr>`).join('');
+}
+
+async function loadHistory() {
+  const rides = await api('/api/rides/history');
+  const tb = document.getElementById('history-table');
+  if (!Array.isArray(rides) || !rides.length) {
+    tb.innerHTML = '<tr><td colspan="5" class="empty">Aucune course terminée</td></tr>';
+    return;
+  }
+  tb.innerHTML = rides.map(r => {
+    const statusBadge = r.status === 'completed'
+      ? '<span class="badge badge-online">✅ Terminée</span>'
+      : r.status === 'cancelled'
+      ? '<span class="badge badge-blocked">❌ Annulée</span>'
+      : `<span class="badge badge-pending">${r.status}</span>`;
+    let duration = '–';
+    if (r.assigned_at && r.completed_at) {
+      const mins = Math.round((new Date(r.completed_at) - new Date(r.assigned_at)) / 60000);
+      duration = `${mins} min`;
+    }
+    return `<tr>
+      <td>📞 ${r.client_phone}</td>
+      <td>${r.driver_phone ? '🚕 ' + r.driver_phone : '–'}</td>
+      <td>${statusBadge}</td>
+      <td style="color:#718096;font-size:12px">${formatDate(r.created_at)}</td>
+      <td style="color:#718096;font-size:12px">${duration}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function loadRides() {
