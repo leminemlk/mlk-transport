@@ -8,36 +8,36 @@ async function handleClient(msg, phone) {
   const hasLocation = msg.type === 'location';
   const text = (msg.text?.body || '').trim().toLowerCase();
 
-  if (text === 'annuler' || text === 'cancel' || text === 'إلغاء') {
+  // 0 = annuler
+  if (text === '0' || text === 'annuler' || text === 'cancel' || text === 'إلغاء') {
     await DB.queue.remove(phone);
     clearState(phone);
     await sendText(phone,
-      `❌ Demande annulée | تم الإلغاء\n\n` +
-      `أرسل رسالة لطلب سيارة\nEnvoyez un message pour appeler le chauffeur.`
+      `❌ تم الإلغاء | Demande annulée.\n\n` +
+      `أرسل أي رسالة لطلب سيارة\n` +
+      `Envoyez un message pour appeler le chauffeur.`
     );
     return;
   }
 
+  // Position reçue → chercher un chauffeur
   if (hasLocation) {
     const lat = msg.location.latitude;
     const lng = msg.location.longitude;
     const rideId = await DB.rides.create(phone, lat, lng);
-    await sendText(phone,
-      `🔍 جاري البحث عن سائق...\nRecherche d'un chauffeur...`
-    );
+    await sendText(phone, `🔍 جاري البحث عن سائق...\nRecherche d'un chauffeur...`);
     await findDriver(phone, lat, lng, rideId);
     return;
   }
 
+  // Tout autre message → envoyer le lien
   const link = `https://mlk-transport-production.up.railway.app/locate.html?phone=${phone}`;
   await sendText(phone,
     `🚖 *MLK Transport*\n\n` +
-    `مرحباً بك في MLK Transport !\n` +
-    `Bienvenue chez MLK Transport !\n\n` +
-    `اضغط على الرابط لطلب سيارة :\n` +
-    `Cliquez sur ce lien pour appeler le chauffeur :\n\n` +
+    `مرحباً ! اضغط على الرابط لطلب سيارة :\n` +
+    `Bienvenue ! Cliquez pour appeler le chauffeur :\n\n` +
     `👉 ${link}\n\n` +
-    `لإلغاء الطلب : *إلغاء*\nPour annuler : *annuler*`
+    `*0* → إلغاء الطلب | Annuler la demande`
   );
 }
 
