@@ -36,6 +36,25 @@ function isSpam(phone) {
 // ─── WEBHOOK ─────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
+
+  // ── Appels entrants ────────────────────────────────────────
+  const calls = req.body?.calls || [];
+  for (const call of calls) {
+    if (call.from_me) continue;
+    try {
+      const phone = (call.from || "").replace("@s.whatsapp.net", "").replace(/\D/g, "");
+      if (!phone || phone.length < 8) continue;
+      if (isSpam(phone)) continue;
+      const driver = await DB.drivers.get(phone);
+      const fakeMsg = { type: "call", from: call.from };
+      if (driver && driver.validated) {
+        await handleDriver(fakeMsg, driver);
+      } else {
+        await handleClient(fakeMsg, phone);
+      }
+    } catch(e) { console.error("[CALL ERR]", e.message); }
+  }
+
   const messages = req.body?.messages || [];
 
   for (const msg of messages) {
