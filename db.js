@@ -85,6 +85,17 @@ const drivers = {
     `);
     return r.rows;
   },
+  // Chauffeurs disponibles avec position GPS (pour dispatch)
+  getAvailable: async () => {
+    const r = await pool.query(`
+      SELECT * FROM drivers
+      WHERE status = 'online' AND active = 1 AND validated = 1
+      AND lat IS NOT NULL AND lng IS NOT NULL
+      AND (trial_until > NOW() OR subscription_end > NOW())
+      ORDER BY last_seen DESC
+    `);
+    return r.rows;
+  },
   insert: async (phone, name) => {
     await pool.query(
       `INSERT INTO drivers (phone, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -148,10 +159,10 @@ const clients = {
 // ─── RIDES ───────────────────────────────────────────────────
 
 const rides = {
-  create: async (clientPhone, lat, lng) => {
+  create: async (clientPhone, lat, lng, zone = null) => {
     const r = await pool.query(
-      `INSERT INTO rides (client_phone, client_lat, client_lng) VALUES ($1, $2, $3) RETURNING id`,
-      [clientPhone, lat, lng]
+      `INSERT INTO rides (client_phone, client_lat, client_lng, zone) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [clientPhone, lat, lng, zone]
     );
     return r.rows[0].id;
   },
@@ -184,7 +195,10 @@ const rides = {
   },
   getActiveByDriver: async (phone) => {
     const r = await pool.query(
-      `SELECT * FROM rides WHERE driver_phone = $1 AND status = 'assigned' LIMIT 1`,
+      `SELECT r.*, c.name AS client_name
+       FROM rides r
+       LEFT JOIN clients c ON c.phone = r.client_phone
+       WHERE r.driver_phone = $1 AND r.status = 'assigned' LIMIT 1`,
       [phone]
     );
     return r.rows[0] || null;
@@ -282,15 +296,20 @@ module.exports = {
   distance, estimateMinutes, findNearestDrivers, getWeekLabel
 };
 
-// Ajouter colonnes chauffeur (migration)
+// Ajouter colonnes (migration)
 async function migrate() {
-  try {
-    await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS clim BOOLEAN DEFAULT false`);
-    await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_ext TEXT`);
-    await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_int TEXT`);
-    await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS validated INTEGER DEFAULT 0`);
-    await pool.query(`ALTER TABLE drivers ADD COLUMN IF NOT EXISTS reg_step TEXT DEFAULT 'done'`);
-  } catch(e) { console.log('Migration:', e.message); }
+  const cols = [
+    `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS clim      BOOLEAN DEFAULT false`,
+    `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_ext TEXT`,
+    `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_int TEXT`,
+    `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS validated INTEGER DEFAULT 0`,
+    `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS reg_step  TEXT DEFAULT 'done'`,
+    `ALTER TABLE rides   ADD COLUMN IF NOT EXISTS zone      TEXT`,
+  ];
+  for (const sql of cols) {
+    try { await pool.query(sql); } catch(e) { /* déjà présente */ }
+  }
+  console.log('✅ Migrations OK');
 }
 
 module.exports.migrate = migrate;
