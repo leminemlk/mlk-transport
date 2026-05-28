@@ -1,7 +1,7 @@
 // ============================================================
 // HANDLER CLIENT — MLK Transport
 // ============================================================
-const { sendText } = require('../whapi');
+const { sendText, sendVoice } = require('../whapi');
 const DB = require('../db');
 const { clearState, findDriver } = require('../queue');
 
@@ -49,6 +49,9 @@ async function handleClient(msg, phone) {
     } catch(e) {}
 
     // Chercher un chauffeur disponible
+    // Message vocal Hassaniya en premier
+    await sendVoice(phone, 'https://mlk-transport-production.up.railway.app/msg_taxi.ogg');
+
     const available = await DB.drivers.getAvailable();
     if (available.length > 0) {
       const d    = available[0]; // le plus proche viendra après partage de position
