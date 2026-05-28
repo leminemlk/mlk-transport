@@ -3,145 +3,88 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <title>MK TAXI</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚕</text></svg>">
 <style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;width:100%;overflow:hidden}
-body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-.logo{font-size:64px;margin-bottom:8px;text-align:center}
-.brand{font-size:28px;font-weight:800;color:#f6c90e;text-align:center;margin-bottom:4px}
-.tagline{font-size:14px;color:#718096;text-align:center;margin-bottom:40px}
-.btn-main{width:100%;max-width:340px;background:#25d366;border:none;border-radius:24px;padding:28px 20px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;transition:transform .15s,opacity .15s;-webkit-tap-highlight-color:transparent}
-.btn-main:active{transform:scale(0.97);opacity:.9}
-.btn-icon{font-size:52px}
-.btn-ar{font-size:22px;font-weight:800;color:#fff}
-.btn-fr{font-size:15px;color:rgba(255,255,255,0.85)}
-.status{margin-top:24px;padding:14px 20px;border-radius:16px;font-size:14px;text-align:center;display:none;max-width:340px;width:100%;line-height:1.7}
-.status.loading{background:#1a2a3a;color:#63b3ed;border:1px solid #2d4a6a;display:block}
-.status.success{background:#1a3a2a;color:#68d391;border:1px solid #2d6a4f;display:block}
-.status.error{background:#3a1a1a;color:#fc8181;border:1px solid #6a2d2d;display:block}
-.status.searching{background:#3a300a;color:#f6c90e;border:1px solid #744210;display:block}
-.cancel-btn{margin-top:14px;background:none;border:1px solid #4a5568;color:#718096;border-radius:12px;padding:10px 24px;font-size:14px;cursor:pointer;display:none}
-.cancel-btn.show{display:block}
-audio{display:none}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.card{background:#1a1f2e;border-radius:20px;padding:32px 24px;max-width:340px;width:100%;text-align:center;border:1px solid #2d3748}
+.logo{font-size:64px;margin-bottom:12px}
+h1{color:#f6c90e;font-size:26px;margin-bottom:6px;font-weight:800}
+.sub{color:#718096;font-size:13px;margin-bottom:28px}
+.btn{width:100%;background:linear-gradient(135deg,#2d6a4f,#1b4332);border:2px solid #48bb78;border-radius:14px;padding:22px;color:#68d391;font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;flex-direction:column;outline:none;transition:opacity .2s}
+.btn:active{opacity:.8}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-ar{font-size:15px;color:#b7e4c7;margin-top:2px}
+.status{margin-top:20px;padding:14px;border-radius:10px;font-size:14px;display:none;line-height:1.7}
+.loading{background:#1a2a3a;color:#63b3ed;border:1px solid #2d4a6a}
+.success{background:#1a3a2a;color:#68d391;border:1px solid #2d6a4f}
+.error{background:#3a1a1a;color:#fc8181;border:1px solid #6a2d2d}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #63b3ed;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin-left:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-
-<div class="logo">🚕</div>
-<div class="brand">MK TAXI</div>
-<div class="tagline">نقلك في دقيقة | Votre taxi en 1 minute</div>
-
-<button class="btn-main" id="mainBtn" onclick="requestTaxi()">
-  <div class="btn-icon">📍</div>
-  <div class="btn-ar">اضغط لطلب تاكسي</div>
-  <div class="btn-fr">Appuyez pour commander un taxi</div>
-</button>
-
-<div class="status" id="status"></div>
-<button class="cancel-btn" id="cancelBtn" onclick="cancelRide()">❌ إلغاء | Annuler</button>
-
-<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto"></audio>
-
+<div class="card">
+  <div class="logo">🚕</div>
+  <h1>MK TAXI</h1>
+  <div class="sub">اضغط لطلب تاكسي | Appuyez pour appeler un taxi</div>
+  <button class="btn" id="btn" onclick="sendLocation()">
+    <div>📍 اطلب تاكسي | Appeler un taxi</div>
+  </button>
+  <div class="status" id="status"></div>
+</div>
 <script>
-const phone = new URLSearchParams(location.search).get('phone') || '';
-let rideRequested = false;
+const params = new URLSearchParams(window.location.search);
+const phone = params.get('phone') || '';
 
-// Jouer le vocal automatiquement au premier toucher
-document.addEventListener('touchstart', playVoice, { once: true });
-document.addEventListener('click', playVoice, { once: true });
-
-function playVoice() {
-  const a = document.getElementById('voiceMsg');
-  if (a) a.play().catch(()=>{});
-}
-
-function setStatus(msg, type) {
+function showStatus(type, msg) {
   const el = document.getElementById('status');
   el.className = 'status ' + type;
   el.innerHTML = msg;
+  el.style.display = 'block';
 }
 
-async function requestTaxi() {
-  if (rideRequested) return;
-  playVoice();
-
-  if (!navigator.geolocation) {
-    setStatus('❌ GPS غير متاح على هذا الجهاز<br>GPS non disponible', 'error');
-    return;
-  }
-
-  document.getElementById('mainBtn').disabled = true;
-  setStatus('📡 جاري تحديد موقعك...<br>Localisation en cours...', 'loading');
+async function sendLocation() {
+  const btn = document.getElementById('btn');
+  if (!phone) { showStatus('error', '❌ رابط غير صالح | Lien invalide'); return; }
+  if (!navigator.geolocation) { showStatus('error', '❌ GPS غير متاح | GPS non disponible'); return; }
+  btn.disabled = true;
+  showStatus('loading', '<span class="spinner"></span> جاري تحديد موقعك... | Localisation...');
 
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       const { latitude: lat, longitude: lng } = pos.coords;
-      setStatus('🔍 جاري البحث عن سائق...<br>Recherche d\'un chauffeur...', 'searching');
-      document.getElementById('cancelBtn').classList.add('show');
-
+      showStatus('loading', '<span class="spinner"></span> جاري البحث... | Recherche chauffeur...');
       try {
         const res = await fetch('/api/locate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ phone, lat, lng })
         });
         const data = await res.json();
         if (data.ok) {
-          rideRequested = true;
-          setStatus('✅ طلبك قيد المعالجة !<br>Votre demande est en cours !<br><small style="color:#a0aec0">ستتلقى رسالة واتساب قريباً<br>Vous recevrez un message WhatsApp</small>', 'success');
-          startPolling();
-        } else {
-          setStatus('❌ خطأ | Erreur. Réessayez.', 'error');
-          document.getElementById('mainBtn').disabled = false;
-        }
+          showStatus('success',
+            `✅ <strong>تم طلب التاكسي ! | Taxi appelé !</strong><br><br>` +
+            `ستصلك رسالة واتساب عند قبول السائق 📱<br>` +
+            `Vous recevrez un message WhatsApp dès qu'un chauffeur accepte.`
+          );
+          btn.innerHTML = '<div>✓ تم الطلب | Demande envoyée</div>';
+          btn.style.background = 'linear-gradient(135deg,#1a3a2a,#0f2a1a)';
+        } else throw new Error(data.error);
       } catch(e) {
-        setStatus('❌ خطأ في الاتصال | Erreur réseau', 'error');
-        document.getElementById('mainBtn').disabled = false;
+        showStatus('error', '❌ خطأ | Erreur. Réessayez.');
+        btn.disabled = false;
+        btn.innerHTML = '<div>📍 اطلب تاكسي | Appeler un taxi</div>';
       }
     },
     (err) => {
-      document.getElementById('mainBtn').disabled = false;
-      setStatus('⚠️ اسمح بالوصول للموقع من إعدادات المتصفح<br>Autorisez la localisation dans les paramètres', 'error');
+      let msg = '❌ يرجى السماح بالوصول للموقع | Autorisez la localisation.';
+      showStatus('error', msg);
+      btn.disabled = false;
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
-}
-
-function startPolling() {
-  let tries = 0;
-  const interval = setInterval(async () => {
-    tries++;
-    if (tries > 24) { clearInterval(interval); return; }
-    try {
-      const res = await fetch(`/api/ride/status?phone=${phone}`);
-      const data = await res.json();
-      if (data.status === 'assigned') {
-        clearInterval(interval);
-        setStatus(
-          `🚕 <strong>تم قبول طلبك !</strong><br>Chauffeur trouvé !<br>` +
-          `<small style="color:#a0aec0">تحقق من واتساب للتفاصيل<br>Vérifiez WhatsApp pour les détails</small>`,
-          'success'
-        );
-        document.getElementById('cancelBtn').classList.remove('show');
-      }
-    } catch(e) {}
-  }, 5000);
-}
-
-async function cancelRide() {
-  await fetch('/api/locate/cancel', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone })
-  });
-  setStatus('❌ تم الإلغاء | Annulé', 'error');
-  document.getElementById('cancelBtn').classList.remove('show');
-  document.getElementById('mainBtn').disabled = false;
-  rideRequested = false;
 }
 </script>
 </body>
