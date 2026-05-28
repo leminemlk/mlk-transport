@@ -63,14 +63,6 @@ async function init() {
       paid_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-
-    CREATE TABLE IF NOT EXISTS blacklist (
-      id SERIAL PRIMARY KEY,
-      phone TEXT UNIQUE NOT NULL,
-      reason TEXT,
-      auto INTEGER DEFAULT 0,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
   `);
   console.log('✅ Base de données PostgreSQL initialisée');
 }
@@ -301,27 +293,7 @@ function getWeekLabel() {
 module.exports = {
   pool, init,
   drivers, clients, rides, queue, payments,
-  distance, estimateMinutes, findNearestDrivers, getWeekLabel,
-
-  blacklist: {
-    check: async (phone) => {
-      const r = await pool.query('SELECT id FROM blacklist WHERE phone=$1', [phone]);
-      return r.rows.length > 0;
-    },
-    add: async (phone, reason = '', auto = 0) => {
-      await pool.query(
-        `INSERT INTO blacklist (phone, reason, auto) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-        [phone, reason, auto]
-      );
-    },
-    remove: async (phone) => {
-      await pool.query('DELETE FROM blacklist WHERE phone=$1', [phone]);
-    },
-    getAll: async () => {
-      const r = await pool.query('SELECT * FROM blacklist ORDER BY created_at DESC');
-      return r.rows;
-    }
-  }
+  distance, estimateMinutes, findNearestDrivers, getWeekLabel
 };
 
 // Ajouter colonnes (migration)

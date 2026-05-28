@@ -81,14 +81,4 @@ async function sendButtons(phone, text, buttons) {
   }
 }
 
-async function sendVoice(phone, url) {
-  try {
-    await withRetry(() =>
-      API.post('/messages/voice', { to: toJid(phone), media: url })
-    );
-  } catch(e) {
-    console.error(`[WHAPI] Erreur voice à ${phone}:`, e.message);
-  }
-}
-
-module.exports = { sendText, sendLocation, sendImage, sendButtons, sendVoice };
+module.exports = { sendText, sendLocation, sendImage, sendButtons };
