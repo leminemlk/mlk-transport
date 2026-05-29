@@ -96,17 +96,26 @@ input:focus{outline:none;border-color:#f6c90e}
       <div id="sub-badge" class="sub-badge sub-ok">...</div>
     </div>
 
-    <!-- Boutons statut -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-      <button id="btn-active" onclick="setActive()" style="background:#1a3a2a;color:#68d391;border:2px solid #48bb78;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
-        🟢<br>متاح<br><small>Actif</small>
-      </button>
-      <button id="btn-pause" onclick="setPause()" style="background:#2d3748;color:#a0aec0;border:2px solid #4a5568;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
-        ⏸<br>استراحة<br><small>Pause</small>
-      </button>
-      <button id="btn-stop" onclick="setStop()" style="background:#3a1a1a;color:#fc8181;border:2px solid #6a2d2d;border-radius:12px;padding:14px 8px;font-size:13px;font-weight:700;cursor:pointer">
-        ⛔<br>إيقاف<br><small>Arrêt</small>
-      </button>
+    <!-- Toggle ON/OFF -->
+    <div id="toggle-card" onclick="handleToggle()" style="background:#1a1f2e;border-radius:16px;padding:16px 18px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border:2px solid #2d3748;transition:border-color .3s">
+      <div>
+        <div id="toggle-label" style="font-size:16px;font-weight:500;color:#e2e8f0">متاح | Disponible</div>
+        <div id="toggle-sub" style="font-size:12px;color:#718096;margin-top:3px">GPS actif — En attente de courses</div>
+      </div>
+      <div id="toggle-switch" style="width:54px;height:30px;border-radius:15px;background:#48bb78;position:relative;transition:background .3s;flex-shrink:0">
+        <div id="toggle-knob" style="width:26px;height:26px;border-radius:50%;background:#fff;position:absolute;top:2px;right:2px;transition:right .3s"></div>
+      </div>
+    </div>
+
+    <!-- Clients proches -->
+    <div style="background:#1a1f2e;border-radius:16px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:500;color:#718096;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+        <span>🔍 Clients qui cherchent près de vous</span>
+        <span id="nearby-count" style="background:#f6c90e;color:#0d1117;border-radius:20px;padding:1px 8px;font-size:11px;font-weight:500">0</span>
+      </div>
+      <div id="nearby-list">
+        <div style="font-size:12px;color:#4a5568;text-align:center;padding:8px 0">Aucun client à proximité</div>
+      </div>
     </div>
 
     <!-- GPS -->
@@ -224,9 +233,62 @@ function updateUI() {
 }
 
 function updateToggleBtn() {
-  document.getElementById('stat-status').textContent = isOnline ? '🟢' : '⚫';
-  if (isOnline) highlightBtn('btn-active');
-  else highlightBtn('btn-pause');
+  const card   = document.getElementById('toggle-card');
+  const sw     = document.getElementById('toggle-switch');
+  const knob   = document.getElementById('toggle-knob');
+  const label  = document.getElementById('toggle-label');
+  const sub    = document.getElementById('toggle-sub');
+  const statEl = document.getElementById('stat-status');
+  if (isOnline) {
+    sw.style.background    = '#48bb78';
+    knob.style.right       = '2px';
+    knob.style.left        = 'auto';
+    card.style.borderColor = '#2d6a4f';
+    label.style.color      = '#68d391';
+    if (statEl) statEl.textContent = '🟢';
+    // Vérifier si en course
+    fetch(`/api/driver/${driverPhone}/status`).then(r=>r.json()).then(st => {
+      if (st.hasActiveRide) {
+        label.textContent = 'رحلة جارية | En course';
+        sub.textContent   = 'Appuyez 1 sur WhatsApp pour terminer';
+        sw.style.background    = '#d69e2e';
+        card.style.borderColor = '#d69e2e';
+        label.style.color      = '#f6c90e';
+      } else {
+        label.textContent = 'متاح | Disponible';
+        sub.textContent   = 'GPS actif — En attente de courses';
+      }
+    }).catch(()=>{
+      label.textContent = 'متاح | Disponible';
+      sub.textContent   = 'GPS actif — En attente de courses';
+    });
+    if (statEl) statEl.textContent = '🟢';
+  } else {
+    sw.style.background    = '#e53e3e';
+    knob.style.right       = 'auto';
+    knob.style.left        = '2px';
+    card.style.borderColor = '#742a2a';
+    label.textContent      = 'غير متاح | Hors ligne';
+    sub.textContent        = 'Appuyez pour vous mettre en ligne';
+    label.style.color      = '#fc8181';
+    if (statEl) statEl.textContent = '⚫';
+  }
+}
+
+async function handleToggle() {
+  const st = await fetch(`/api/driver/${driverPhone}/status`).then(r=>r.json()).catch(()=>null);
+  if (!st) return;
+  if (st.hasActiveRide) {
+    // En course → terminer = redevenir dispo (équivalent "1" WhatsApp)
+    await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
+    loadStatus();
+  } else if (isOnline) {
+    // Dispo → pause
+    await setPause();
+  } else {
+    // Offline → se mettre dispo
+    await setActive();
+  }
 }
 
 async function setActive() {
