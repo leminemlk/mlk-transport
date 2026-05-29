@@ -1,9 +1,11 @@
 // ============================================================
-// HANDLER CLIENT — MLK Transport
+// HANDLER CLIENT — MLK Transport v3
 // ============================================================
-const { sendText, sendVoice } = require('../whapi');
+const { sendText, sendVoice, sendImage } = require('../whapi');
 const DB = require('../db');
-const { clearState, findDriver } = require('../queue');
+
+const VOICE_URL  = 'https://mlk-transport-production.up.railway.app/msg_taxi.ogg';
+const LOCATE_URL = (phone) => `https://mlk-transport-production.up.railway.app/locate.html?phone=${phone}`;
 
 async function handleClient(msg, phone) {
   await DB.clients.upsert(phone);
@@ -13,87 +15,115 @@ async function handleClient(msg, phone) {
   const text        = (msgType === 'text' ? (msg.text?.body || '') : '').trim();
   const isMedia     = ['sticker','image','audio','video','document','reaction'].includes(msgType);
   const isCall      = msgType === 'call';
-  const locateLink  = `https://mlk-transport-production.up.railway.app/locate.html?phone=${phone}`;
 
   // ── 0 : annuler ───────────────────────────────────────────
   if (text === '0') {
     await DB.queue.remove(phone);
-    clearState(phone);
     try {
       await DB.pool.query(
         `UPDATE rides SET status='cancelled'
-         WHERE client_phone=$1 AND status IN ('searching','offered')`,
-        [phone]
+         WHERE client_phone=$1 AND status IN ('searching','offered')`, [phone]
       );
     } catch(e) {}
-    await sendText(phone, `❌ تم الإلغاء | Demande annulée.`);
+    await sendText(phone, `❌ تم الإلغاء | Annulé.`);
     return;
   }
 
-  // ── Sticker / bitmoji / appel / audio ─────────────────────
-  // → Chercher le premier chauffeur disponible et envoyer son contact
+
+
+  // ── Sticker / bitmoji / appel ──────────────────────────────
   if (isMedia || isCall) {
-    // Course déjà en cours ?
+    const inProgress = await DB.pool.query(
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
+    );
+    if (inProgress.rows.length > 0) {
+      await sendText(phone, `⏳ طلبك قيد المعالجة | Course en cours.\nاكتب *0* للإلغاء | Tapez *0* pour annuler.`);
+      return;
+    }
+    await sendVoice(phone, VOICE_URL).catch(()=>{});
+    await sendText(phone,
+      `🚕 *MK TAXI*\n\n📍 أرسل موقعك لطلب سيارة\nEnvoyez votre position.\n\n👉 ${LOCATE_URL(phone)}`
+    );
+    return;
+  }
+
+  // ── Position GPS → afficher liste des chauffeurs ──────────
+  if (hasLocation) {
+    const lat  = msg.location.latitude;
+    const lng  = msg.location.longitude;
+    const zone = msg.location.name || null;
+
+    // Vérifier si course en cours (sauf si réinitialisé après 30min)
+    const existing = await DB.pool.query(
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
+    );
+    if (existing.rows.length > 0) {
+      await sendText(phone, `⏳ طلبك قيد المعالجة | Course en cours.\nاكتب *0* للإلغاء | Tapez *0* pour annuler.`);
+      return;
+    }
+
+    const rideId = await DB.rides.create(phone, lat, lng, zone);
+
+    // Lire le rayon depuis settings
+    let radius = 5;
     try {
-      const inProg = await DB.pool.query(
-        `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`,
-        [phone]
-      );
-      if (inProg.rows.length > 0) {
-        await sendText(phone,
-          `⏳ *طلبك قيد المعالجة | Votre course est en cours...*\n` +
-          `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
-        );
-        return;
-      }
+      const r = await DB.pool.query(`SELECT value FROM settings WHERE key='radius'`);
+      radius = parseFloat(r.rows[0]?.value || '5');
     } catch(e) {}
 
-    // Chercher un chauffeur disponible
-    // Message vocal Hassaniya en premier
-    await sendVoice(phone, 'https://mlk-transport-production.up.railway.app/msg_taxi.ogg');
+    const { pendingOffers } = require('../queue');
+    const nearbyRaw = await DB.findNearestDrivers(lat, lng, radius);
+    const nearby = nearbyRaw
+      .filter(d => !pendingOffers.has(d.phone))
+      .slice(0, 5)
+      .map(d => ({ ...d, distKm: d.dist.toFixed(1) }));
 
-    const available = await DB.drivers.getAvailable();
-    if (available.length > 0) {
-      const d    = available[0]; // le plus proche viendra après partage de position
-      const clim = d.clim ? '❄️ Climatisée' : '🌡 Sans clim';
+    if (nearby.length === 0) {
+      await DB.queue.add(phone, lat, lng);
+      const pos = await DB.queue.getPosition(phone);
       await sendText(phone,
-        `🚕 *MK TAXI*\n\n` +
-        `سائق متاح الآن ! | Chauffeur disponible !\n\n` +
-        `👤 *${d.name}*\n` +
-        `📞 wa.me/${d.phone}\n` +
-        `${clim}\n\n` +
-        `_اتصل مباشرة أو أرسل موقعك لطلب رسمي\nAppellez directement ou envoyez votre position pour une demande officielle._\n\n` +
-        `👉 ${locateLink}`
+        `⏳ *جميع السائقين مشغولون | Tous les chauffeurs sont occupés.*\n\n` +
+        `أنت رقم *${pos}* في قائمة الانتظار.\n` +
+        `Vous êtes *n°${pos}* dans la file.\n\n` +
+        `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
       );
-    } else {
-      await sendText(phone,
-        `🚕 *MK TAXI*\n\n` +
-        `مرحباً ! اضغط الرابط لطلب تاكسي :\n` +
-        `Appuyez sur ce lien pour appeler un taxi :\n\n` +
-        `👉 ${locateLink}\n\n` +
-        `اكتب الرقم *0️⃣* للإلغاء | Tapez le chiffre *0️⃣* pour annuler`
-      );
+      return;
     }
+
+    await sendText(phone,
+      `🚕 *${nearby.length} سائق متاح | ${nearby.length} chauffeur(s) disponible(s)*\n` +
+      `_اتصل مباشرة بالسائق الذي تريد | Appelez directement le chauffeur de votre choix_`
+    );
+
+    for (let i = 0; i < nearby.length; i++) {
+      const d = nearby[i];
+      const caption =
+        `*${i+1}. ${d.name}*\n` +
+        `📍 ${d.distKm} كم | ${d.distKm} km\n` +
+        `${d.clim ? '❄️ Climatisée' : '🌡 Sans clim'}\n` +
+        `📞 *wa.me/${d.phone}*`;
+
+      if (d.photo_ext) {
+        try { await sendImage(phone, d.photo_ext, caption); }
+        catch(e) { await sendText(phone, caption); }
+      } else {
+        await sendText(phone, caption);
+      }
+      await new Promise(r => setTimeout(r, 600));
+    }
+
+    await sendText(phone,
+      `_سيتم تأكيد الرحلة تلقائياً عند لقائكم (50م)\n` +
+      `La course sera confirmée automatiquement à votre rencontre (50m)._\n\n` +
+      `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
+    );
     return;
   }
 
-  // ── Position GPS → créer une course ───────────────────────
-  if (hasLocation) {
-    const lat    = msg.location.latitude;
-    const lng    = msg.location.longitude;
-    const rideId = await DB.rides.create(phone, lat, lng);
-    await sendText(phone, `🔍 جاري البحث عن سائق...\nRecherche d'un chauffeur...`);
-    await findDriver(phone, lat, lng, rideId);
-    return;
-  }
 
-  // ── Tout autre texte → envoyer le lien ────────────────────
+
   await sendText(phone,
-    `🚕 *MK TAXI*\n\n` +
-    `مرحباً ! اضغط الرابط لطلب تاكسي :\n` +
-    `Appuyez sur ce lien pour appeler un taxi :\n\n` +
-    `👉 ${locateLink}\n\n` +
-    `اكتب الرقم *0️⃣* للإلغاء | Tapez le chiffre *0️⃣* pour annuler`
+    `🚕 *MK TAXI*\n\n📍 أرسل موقعك لطلب سيارة\nEnvoyez votre position.\n\n👉 ${LOCATE_URL(phone)}`
   );
 }
 
