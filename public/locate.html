@@ -44,25 +44,38 @@ audio{display:none}
 <div class="status" id="status"></div>
 <button class="cancel-btn" id="cancelBtn" onclick="cancelRide()">❌ إلغاء | Annuler</button>
 
-<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto" autoplay></audio>
+<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto"></audio>
+
+<style>
+#splash{position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;cursor:pointer}
+#splash .sp-icon{font-size:80px;margin-bottom:16px;animation:bounce 1s infinite}
+#splash .sp-text{font-size:20px;font-weight:700;color:#f6c90e;text-align:center;line-height:1.6}
+#splash .sp-sub{font-size:14px;color:#718096;margin-top:8px;text-align:center}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+</style>
+
+<div id="splash" onclick="startApp()">
+  <div class="sp-icon">🔊</div>
+  <div class="sp-text">اضغط هنا للبدء<br>Appuyez pour commencer</div>
+  <div class="sp-sub">🚕 MK TAXI</div>
+</div>
 
 <script>
 const phone = new URLSearchParams(location.search).get('phone') || '';
 let rideRequested = false;
 
+function startApp() {
+  // Jouer le vocal (interaction utilisateur garantie)
+  const a = document.getElementById('voiceMsg');
+  if (a) a.play().catch(()=>{});
+  // Cacher le splash
+  document.getElementById('splash').style.display = 'none';
+}
+
 function playVoice() {
   const a = document.getElementById('voiceMsg');
   if (a) a.play().catch(()=>{});
 }
-
-// Jouer dès l'ouverture (fonctionne si page ouverte depuis WhatsApp)
-window.addEventListener('load', () => {
-  setTimeout(playVoice, 300);
-});
-
-// Fallback : premier toucher si autoplay bloqué
-document.addEventListener('touchstart', playVoice, { once: true });
-document.addEventListener('click', playVoice, { once: true });
 
 function setStatus(msg, type) {
   const el = document.getElementById('status');
@@ -72,7 +85,6 @@ function setStatus(msg, type) {
 
 async function requestTaxi() {
   if (rideRequested) return;
-  playVoice();
 
   if (!navigator.geolocation) {
     setStatus('❌ GPS غير متاح على هذا الجهاز<br>GPS non disponible', 'error');
@@ -138,6 +150,10 @@ function startPolling() {
 }
 
 async function cancelRide() {
+  if (typeof locWatchId !== 'undefined' && locWatchId !== null) {
+    navigator.geolocation.clearWatch(locWatchId);
+    locWatchId = null;
+  }
   await fetch('/api/locate/cancel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
