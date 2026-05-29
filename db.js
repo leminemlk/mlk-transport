@@ -64,6 +64,11 @@ async function init() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS blacklist (
       id SERIAL PRIMARY KEY,
       phone TEXT UNIQUE NOT NULL,
@@ -71,6 +76,15 @@ async function init() {
       auto INTEGER DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+  `);
+  // Valeurs par défaut des paramètres
+  await pool.query(`
+    INSERT INTO settings (key, value) VALUES
+      ('price',   '500'),
+      ('trial',   '90'),
+      ('radius',  '5'),
+      ('timeout', '60')
+    ON CONFLICT DO NOTHING
   `);
   console.log('✅ Base de données PostgreSQL initialisée');
 }

@@ -533,6 +533,29 @@ cron.schedule('0 3 * * *', async () => {
   } catch(e) { console.error('[CRON ERR]', e.message); }
 });
 
+// ─── API SETTINGS ────────────────────────────────────────────
+app.get('/api/settings', async (req, res) => {
+  try {
+    const r = await DB.pool.query('SELECT * FROM settings ORDER BY key');
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/settings/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+    const allowed = ['price','trial','radius','timeout'];
+    if (!allowed.includes(key)) return res.status(400).json({ error: 'Clé invalide' });
+    await DB.pool.query(
+      `INSERT INTO settings (key,value) VALUES ($1,$2)
+       ON CONFLICT (key) DO UPDATE SET value=$2`,
+      [key, String(value)]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── HEALTHCHECK ─────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
