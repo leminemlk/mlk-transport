@@ -363,7 +363,9 @@ function showTab(name) {
 
 // ─── API ──────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...opts.headers } });
+  // Accepter api(url, 'POST') ou api(url, {method:'POST'})
+  if (typeof opts === 'string') opts = { method: opts };
+  const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
   return res.json();
 }
 
