@@ -533,14 +533,40 @@ cron.schedule('0 3 * * *', async () => {
   } catch(e) { console.error('[CRON ERR]', e.message); }
 });
 
-// ─── API SETTINGS ────────────────────────────────────────────
+// ─── NETTOYAGE COURSES BLOQUÉES ──────────────────────────────
+app.post('/api/cleanup', async (req, res) => {
+  try {
+    const cancelled = await DB.pool.query(`
+      UPDATE rides SET status='cancelled'
+      WHERE status IN ('searching','offered')
+      AND created_at < NOW() - INTERVAL '30 minutes'
+      RETURNING id, driver_phone
+    `);
+    const driverPhones = [...new Set(
+      cancelled.rows.map(r => r.driver_phone).filter(Boolean)
+    )];
+    if (driverPhones.length > 0) {
+      await DB.pool.query(
+        `UPDATE drivers SET status='online' WHERE phone = ANY($1)`, [driverPhones]
+      );
+    }
+    await DB.pool.query(`DELETE FROM queue WHERE created_at < NOW() - INTERVAL '30 minutes'`);
+    await DB.pool.query(`
+      UPDATE drivers SET status='online'
+      WHERE status IN ('busy','pending')
+      AND last_seen < NOW() - INTERVAL '30 minutes'
+    `);
+    res.json({ ok: true, cancelled: cancelled.rows.length, driversReset: driverPhones.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── API SETTINGS ─────────────────────────────────────────────
 app.get('/api/settings', async (req, res) => {
   try {
     const r = await DB.pool.query('SELECT * FROM settings ORDER BY key');
     res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/settings/:key', async (req, res) => {
   try {
     const { key } = req.params;
@@ -548,8 +574,7 @@ app.post('/api/settings/:key', async (req, res) => {
     const allowed = ['price','trial','radius','timeout'];
     if (!allowed.includes(key)) return res.status(400).json({ error: 'Clé invalide' });
     await DB.pool.query(
-      `INSERT INTO settings (key,value) VALUES ($1,$2)
-       ON CONFLICT (key) DO UPDATE SET value=$2`,
+      `INSERT INTO settings (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value=$2`,
       [key, String(value)]
     );
     res.json({ ok: true });
