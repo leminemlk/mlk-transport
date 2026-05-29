@@ -275,25 +275,46 @@ function highlightBtn(activeId) {
 
 async function toggleStatus() { setActive(); }
 
+let watchId = null;
+
 function startGPS() {
   if (!navigator.geolocation) { alert('GPS غير متاح | GPS non disponible'); return; }
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    await sendGPSUpdate(pos.coords.latitude, pos.coords.longitude);
-    isOnline = true;
-    updateToggleBtn();
-    requestWakeLock();
-    gpsInterval = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    }, 30000);
-  }, () => alert('❌ اسمح بالوصول للموقع | Autorisez la localisation'),
-  { enableHighAccuracy: true, timeout: 15000 });
+
+  // watchPosition = mise à jour continue automatique (pas besoin d'intervalle)
+  watchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      await sendGPSUpdate(pos.coords.latitude, pos.coords.longitude);
+      if (!isOnline) {
+        isOnline = true;
+        updateToggleBtn();
+        requestWakeLock();
+      }
+    },
+    (err) => {
+      console.warn('GPS err:', err.message);
+      // Retry après 10s si erreur
+      setTimeout(startGPS, 10000);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+
+  // Backup : forcer update toutes les 30s si watchPosition ne se déclenche pas
+  gpsInterval = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(
+      p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+    );
+  }, 30000);
 }
 
-function stopGPS() { if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; } }
+function stopGPS() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; }
+}
 
 // Calcul distance en mètres
 function distanceM(lat1,lng1,lat2,lng2) {
