@@ -154,33 +154,52 @@ let wakeLock    = null;
 // ─── INIT ──────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   const urlToken = new URLSearchParams(location.search).get('t');
-  if (urlToken) {
-    try {
-      const r = await fetch(`${BASE}/api/driver-by-token/${urlToken}`);
-      if (r.ok) {
-        const data = await r.json();
-        driverPhone = data.driver.phone;
-        driverToken = urlToken;
-        showDashboard(data);
-        return;
-      }
-    } catch(e) {}
-  }
-  const saved = localStorage.getItem('mkd_token');
-  if (saved) {
-    try {
-      const r = await fetch(`${BASE}/api/driver-by-token/${saved}`);
-      if (r.ok) {
-        const data = await r.json();
-        driverPhone = data.driver.phone;
-        driverToken = saved;
-        showDashboard(data);
-        return;
-      }
-    } catch(e) {}
+  const savedToken = localStorage.getItem('mkd_token');
+  const activeToken = urlToken || savedToken;
+
+  if (activeToken) {
+    // Sauvegarder token immédiatement
+    if (urlToken) localStorage.setItem('mkd_token', urlToken);
+    driverToken = activeToken;
+
+    // Essayer de charger avec retry automatique
+    await loadWithRetry(activeToken);
+    return;
   }
   document.getElementById('login-page').style.display = 'flex';
 });
+
+async function loadWithRetry(token, attempt=1) {
+  try {
+    const r = await fetch(`${BASE}/api/driver-by-token/${token}`, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const data = await r.json();
+      if (!data.driver.validated) {
+        document.getElementById('login-page').style.display = 'flex';
+        document.getElementById('err-msg').textContent = 'Dossier en attente de validation admin.';
+        return;
+      }
+      driverPhone = data.driver.phone;
+      driverToken = token;
+      localStorage.setItem('mkd_token', token);
+      showDashboard(data);
+      return;
+    }
+    // Token invalide → montrer login
+    localStorage.removeItem('mkd_token');
+    document.getElementById('login-page').style.display = 'flex';
+  } catch(e) {
+    // Serveur down → retry jusqu'à 5 fois
+    if (attempt <= 5) {
+      document.getElementById('login-page').style.display = 'flex';
+      document.getElementById('err-msg').textContent = `Reconnexion... (${attempt}/5)`;
+      await new Promise(r => setTimeout(r, 2000 * attempt));
+      await loadWithRetry(token, attempt + 1);
+    } else {
+      document.getElementById('err-msg').textContent = 'Serveur indisponible. Réessayez.';
+    }
+  }
+}
 
 async function doLogin() {
   const phone = document.getElementById('phone-input').value.replace(/\D/g,'');
@@ -328,19 +347,27 @@ function startPing() {
   if (pingInterval) clearInterval(pingInterval);
   loadStatus();
   loadNearby();
-  pingInterval = setInterval(()=>{ loadStatus(); loadNearby(); }, 15000);
+  pingInterval = setInterval(async ()=>{
+    try { await loadStatus(); } catch(e){}
+    if (isOnline) { try { await loadNearby(); } catch(e){} }
+  }, 15000);
 }
 
 async function loadStatus() {
   if (!driverToken) return;
   try {
-    const r = await fetch(`${BASE}/api/driver-by-token/${driverToken}`);
-    if (!r.ok) return;
+    const r = await fetch(`${BASE}/api/driver-by-token/${driverToken}`, 
+      { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return; // Serveur down → garder état actuel, ne pas déconnecter
     const d = await r.json();
     isOnline = d.driver.status==='online'||d.driver.status==='busy';
+    if (d.driver.name) document.getElementById('drv-name').textContent = d.driver.name;
     updateUI(d.hasActiveRide, d.today);
     document.getElementById('finish-btn').style.display = d.hasActiveRide ? 'block' : 'none';
-  } catch(e){}
+  } catch(e){
+    // Timeout ou erreur réseau → ne rien faire, garder état actuel
+    console.warn('[STATUS] Hors ligne temporaire');
+  }
 }
 
 async function loadNearby() {
