@@ -422,7 +422,11 @@ app.post('/api/driver/respond', async (req, res) => {
 // ─── API CLIENT LOCATE ────────────────────────────────────────
 app.post('/api/locate', async (req, res) => {
   try {
-    const { phone, lat, lng } = req.body;
+    let { phone, token, lat, lng } = req.body;
+    if (!phone && token) {
+      const c = await DB.getClientByToken(token);
+      if (c) phone = c.phone;
+    }
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
@@ -464,9 +468,11 @@ app.post('/api/locate/update', async (req, res) => {
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     await DB.pool.query(
       `UPDATE rides SET client_lat=$1, client_lng=$2
-       WHERE client_phone=$3 AND status IN ('searching','offered')`,
+       WHERE client_phone=$3 AND status IN ('searching','offered','matched','in_progress')`,
       [lat, lng, phone]
     );
+    // Sauvegarder snapshot client pour Trip Engine
+    TripEngine.saveSnapshot(phone, 'client', lat, lng).catch(()=>{});
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -697,6 +703,49 @@ cron.schedule('0 3 * * *', async () => {
   } catch(e) { console.error('[CRON ERR]', e.message); }
 });
 
+
+// ─── TOKEN ROUTES ─────────────────────────────────────────
+app.get('/api/token/driver/:phone', async (req, res) => {
+  try {
+    const token = await DB.getOrCreateDriverToken(req.params.phone);
+    res.json({ token, url: `https://mlk-transport-production.up.railway.app/chauffeur.html?t=${token}` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/driver-by-token/:token', async (req, res) => {
+  try {
+    const driver = await DB.getDriverByToken(req.params.token);
+    if (!driver) return res.status(404).json({ error: 'Token invalide' });
+    const hasActiveRide = !!(await DB.rides.getActiveByDriver(driver.phone));
+    const today = await DB.rides.todayByDriver(driver.phone);
+    res.json({ driver, hasActiveRide, today });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/client-by-token/:token', async (req, res) => {
+  try {
+    const client = await DB.getClientByToken(req.params.token);
+    if (!client) return res.status(404).json({ error: 'Token invalide' });
+    res.json({ phone: client.phone, name: client.name });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── CSV HISTORIQUE ───────────────────────────────────────
+app.get('/api/history/csv', async (req, res) => {
+  try {
+    const rows = await DB.rides.getHistory();
+    const header = 'ID,Date,Client,Nom,Chauffeur,Nom chauffeur,Zone,Durée(min),Statut\n';
+    const csv = header + rows.map(r => [
+      r.ride_id||r.id,
+      new Date(r.created_at).toLocaleString('fr-FR'),
+      r.client_phone, r.client_name||'',
+      r.driver_phone||'', r.driver_name||'',
+      r.zone||'', r.duration_min||'', r.status
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="mlk_historique.csv"');
+    res.send('\ufeff'+csv);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── NETTOYAGE COURSES BLOQUÉES ──────────────────────────────
 app.post('/api/cleanup', async (req, res) => {
   try {
@@ -831,6 +880,17 @@ app.get('/api/driver/:phone/nearby', async (req, res) => {
       .slice(0, 5);
 
     res.json({ clients });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// Score temps réel d'une course
+app.get('/api/rides/:id/score', async (req, res) => {
+  try {
+    const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Introuvable' });
+    const { score, details } = await TripEngine.calculateScore(r.rows[0]);
+    res.json({ score, details, ride_status: r.rows[0].status, confidence_score: r.rows[0].confidence_score });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
