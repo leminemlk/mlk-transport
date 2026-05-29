@@ -155,14 +155,12 @@ window.onload = () => {
   // Lire le numéro depuis l'URL d'abord
   const urlPhone = new URLSearchParams(window.location.search).get('phone');
   if (urlPhone) {
-    // Phone dans l'URL → cacher le formulaire immédiatement
     driverPhone = urlPhone.replace(/\D/g, '');
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-section').style.display = 'block';
     document.getElementById('driver-name').textContent = '⏳ Chargement...';
     login(true);
   } else {
-    // Sinon depuis localStorage
     const saved = localStorage.getItem('mk_driver_phone');
     if (saved) { driverPhone = saved; login(true); }
   }
@@ -181,8 +179,8 @@ async function login(auto = false) {
       return;
     }
     if (!driver.validated) {
-      document.getElementById('driver-name').textContent = '⏳ طلبك قيد المراجعة';
-      document.getElementById('driver-phone').textContent = 'Dossier en attente de validation admin.';
+      document.getElementById('login-error').textContent =
+        '⏳ طلبك قيد المراجعة | Dossier en attente de validation.';
       return;
     }
     driverPhone = driver.phone;
@@ -284,24 +282,15 @@ let bgInterval = null;
 
 function startGPS() {
   if (!navigator.geolocation) { alert('GPS غير متاح | GPS non disponible'); return; }
-
-  // wakeLock immédiat pour garder l'écran actif
   requestWakeLock();
-
-  // watchPosition principal
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       await sendGPSUpdate(pos.coords.latitude, pos.coords.longitude);
       if (!isOnline) { isOnline = true; updateToggleBtn(); }
     },
-    (err) => {
-      console.warn('GPS err:', err.message);
-      setTimeout(() => { stopGPS(); startGPS(); }, 10000);
-    },
+    (err) => { setTimeout(() => { stopGPS(); startGPS(); }, 10000); },
     { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
   );
-
-  // Backup toutes les 15s (couvre l'écran éteint sur Android)
   gpsInterval = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
       p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
@@ -309,19 +298,15 @@ function startGPS() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
     );
   }, 15000);
-
-  // Reacquérir wakeLock si libéré (ex: appel entrant, autre app)
   bgInterval = setInterval(async () => {
-    if (!wakeLock || wakeLock.released) {
-      await requestWakeLock();
-    }
+    if (!wakeLock || wakeLock.released) await requestWakeLock();
   }, 20000);
 }
 
 function stopGPS() {
   if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-  if (gpsInterval)      { clearInterval(gpsInterval); gpsInterval = null; }
-  if (bgInterval)       { clearInterval(bgInterval);  bgInterval  = null; }
+  if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; }
+  if (bgInterval)  { clearInterval(bgInterval);  bgInterval  = null; }
 }
 
 // Calcul distance en mètres
@@ -373,18 +358,15 @@ function showRideOffer(offer) {
   document.getElementById('ride-distance').textContent = `📍 العميل على بعد ${offer.dist} كم | ${offer.dist} km`;
   document.getElementById('ride-eta').textContent = `⏱ وقت الوصول ~${offer.eta} دقيقة | ~${offer.eta} min`;
   if (navigator.vibrate) navigator.vibrate([500,200,500,200,500]);
-  // Son de notification
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     [0, 0.3, 0.6].forEach(t => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = 880;
       gain.gain.setValueAtTime(0.4, ctx.currentTime + t);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.25);
-      osc.start(ctx.currentTime + t);
-      osc.stop(ctx.currentTime + t + 0.25);
+      osc.start(ctx.currentTime + t); osc.stop(ctx.currentTime + t + 0.25);
     });
   } catch(e) {}
   let sec = 60;
@@ -414,33 +396,24 @@ async function respondRide(response) {
 async function finishRide() {
   await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
   document.getElementById('finish-btn').style.display = 'none';
-);
-  document.getElementById('finish-btn').style.display = 'none';
-  loadStatus();
 }
 
 async function requestWakeLock() {
   try {
     if ('wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => {
-        // Reacquérir si toujours en ligne
-        if (isOnline) setTimeout(requestWakeLock, 1000);
-      });
+      wakeLock.addEventListener('release', () => { if (isOnline) setTimeout(requestWakeLock, 1000); });
     }
-  } catch(e) { console.warn('WakeLock:', e.message); }
+  } catch(e) {}
 }
 function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null; } }
 
-// Reacquérir wakeLock + relancer GPS quand page redevient visible
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && isOnline) {
     await requestWakeLock();
-    // Forcer une MAJ GPS immédiate
     navigator.geolocation.getCurrentPosition(
       p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }
 });
