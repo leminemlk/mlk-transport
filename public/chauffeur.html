@@ -229,71 +229,71 @@ function updateUI() {
     badge.textContent = `⚠️ انتهى الاشتراك | Abonnement expiré`;
   }
   isOnline = driverData.status === 'online' || driverData.status === 'busy';
-  updateToggleBtn();
+  updateToggleBtn(data.hasActiveRide);
 }
 
-function updateToggleBtn() {
+function updateToggleBtn(hasActiveRide) {
   const card   = document.getElementById('toggle-card');
   const sw     = document.getElementById('toggle-switch');
   const knob   = document.getElementById('toggle-knob');
   const label  = document.getElementById('toggle-label');
   const sub    = document.getElementById('toggle-sub');
   const statEl = document.getElementById('stat-status');
+  if (!card || !sw || !knob) return;
+
   if (isOnline) {
-    sw.style.background    = '#48bb78';
-    knob.style.right       = '2px';
-    knob.style.left        = 'auto';
-    card.style.borderColor = '#2d6a4f';
-    label.style.color      = '#68d391';
-    if (statEl) statEl.textContent = '🟢';
-    // Vérifier si en course
-    fetch(`/api/driver/${driverPhone}/status`).then(r=>r.json()).then(st => {
-      if (st.hasActiveRide) {
-        label.textContent = 'رحلة جارية | En course';
-        sub.textContent   = 'Appuyez 1 sur WhatsApp pour terminer';
-        sw.style.background    = '#d69e2e';
-        card.style.borderColor = '#d69e2e';
-        label.style.color      = '#f6c90e';
-      } else {
-        label.textContent = 'متاح | Disponible';
-        sub.textContent   = 'GPS actif — En attente de courses';
-      }
-    }).catch(()=>{
-      label.textContent = 'متاح | Disponible';
-      sub.textContent   = 'GPS actif — En attente de courses';
-    });
-    if (statEl) statEl.textContent = '🟢';
+    if (hasActiveRide) {
+      sw.style.background    = '#d69e2e';
+      card.style.borderColor = '#744210';
+      label.textContent      = 'رحلة جارية | En course';
+      sub.textContent        = 'Tapez *1* sur WhatsApp pour terminer';
+      label.style.color      = '#f6c90e';
+      if (statEl) statEl.textContent = '🟡';
+    } else {
+      sw.style.background    = '#48bb78';
+      card.style.borderColor = '#2d6a4f';
+      label.textContent      = 'متاح | Disponible';
+      sub.textContent        = 'GPS actif — En attente de courses';
+      label.style.color      = '#68d391';
+      if (statEl) statEl.textContent = '🟢';
+    }
+    knob.style.right = '2px';
+    knob.style.left  = 'auto';
   } else {
     sw.style.background    = '#e53e3e';
-    knob.style.right       = 'auto';
-    knob.style.left        = '2px';
     card.style.borderColor = '#742a2a';
     label.textContent      = 'غير متاح | Hors ligne';
     sub.textContent        = 'Appuyez pour vous mettre en ligne';
     label.style.color      = '#fc8181';
-    if (statEl) statEl.textContent = '⚫';
+    knob.style.right       = 'auto';
+    knob.style.left        = '2px';
+    if (statEl) statEl.textContent = '🔴';
   }
 }
 
 async function handleToggle() {
-  const st = await fetch(`/api/driver/${driverPhone}/status`).then(r=>r.json()).catch(()=>null);
-  if (!st) return;
-  if (st.hasActiveRide) {
-    // En course → terminer = redevenir dispo (équivalent "1" WhatsApp)
-    await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
-    loadStatus();
-  } else if (isOnline) {
-    // Dispo → pause
-    await setPause();
+  if (isOnline) {
+    // Vérifier course active depuis les données déjà chargées
+    const st = await fetch(`/api/driver/${driverPhone}/status`).then(r=>r.json()).catch(()=>null);
+    if (st && st.hasActiveRide) {
+      await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
+      isOnline = true;
+      updateToggleBtn(false);
+      setTimeout(loadStatus, 1000);
+    } else {
+      await setPause();
+    }
   } else {
-    // Offline → se mettre dispo
     await setActive();
   }
 }
 
 async function setActive() {
+  // Mettre en ligne immédiatement visuellement
+  isOnline = true;
+  updateToggleBtn();
+  requestWakeLock();
   startGPS();
-  highlightBtn('btn-active');
 }
 
 async function setPause() {
@@ -381,6 +381,7 @@ function distanceM(lat1,lng1,lat2,lng2) {
 }
 
 async function sendGPSUpdate(lat, lng) {
+  if (!isOnline) { isOnline = true; updateToggleBtn(false); }
   // Ne mettre à jour que si déplacé de plus de 50m
   if (lastLat !== null && distanceM(lastLat, lastLng, lat, lng) < 50) return;
   lastLat = lat; lastLng = lng;
