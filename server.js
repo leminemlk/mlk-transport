@@ -70,25 +70,6 @@ app.post('/webhook', async (req, res) => {
     } catch(e) { console.error('[CALL ERR]', e.message); }
   }
 
-  // ── Appels dans messages (fallback Whapi) ──────────────────
-  // Whapi envoie parfois les appels manqués comme messages système
-  const callMsgs = (req.body?.messages || []).filter(m => m.type === 'call' || m.type === 'missed_call');
-  for (const msg of callMsgs) {
-    if (msg.from_me) continue;
-    try {
-      const phone = msg.from.replace('@s.whatsapp.net','').replace(/\D/g,'');
-      if (!phone || phone.length < 8) continue;
-      if (await DB.blacklist.check(phone)) continue;
-      console.log(`[CALL MSG] De ${phone}`);
-      const driver = await DB.drivers.get(phone);
-      const fakeMsg = { type: 'call', from: msg.from };
-      if (driver && driver.validated) {
-        await handleDriver(fakeMsg, driver);
-      } else {
-        await handleClient(fakeMsg, phone, msg.pushName || null);
-      }
-    } catch(e) { console.error('[CALL MSG ERR]', e.message); }
-  }
 
   const messages = req.body?.messages || [];
   for (const msg of messages) {
@@ -104,7 +85,7 @@ app.post('/webhook', async (req, res) => {
 
       const msgType  = msg.type;
       const pushName = msg.pushName || msg.notify || null;
-      const isMedia  = ['sticker','image','audio','video','document','reaction','call'].includes(msgType);
+      const isMedia  = ['sticker','image','audio','video','document','reaction'].includes(msgType);
       const text     = (msgType === 'text' ? (msg.text?.body || '') : '').trim().toLowerCase();
       const { getState, setState, clearState } = require('./queue');
       const { state, data } = getState(phone);
