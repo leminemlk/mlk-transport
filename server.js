@@ -751,10 +751,14 @@ app.post('/api/rides/:id/dispatch', async (req, res) => {
     const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [id]);
     const ride = r.rows[0];
     if (!ride) return res.status(404).json({ error: 'Introuvable' });
-    await DB.pool.query(`UPDATE rides SET status='searching', driver_phone=NULL WHERE id=$1`, [id]);
-    const { findDriver } = require('./queue');
+    await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE id=$1`, [id]);
     res.json({ ok: true });
-    await findDriver(ride.client_phone, ride.client_lat, ride.client_lng, ride.id);
+    const { handleClient } = require('./handlers/client');
+    await handleClient({
+      type: 'location',
+      from: ride.client_phone + '@s.whatsapp.net',
+      location: { latitude: ride.client_lat, longitude: ride.client_lng, name: ride.zone }
+    }, ride.client_phone);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
