@@ -257,16 +257,14 @@ function updateToggleBtn(hasActiveRide) {
       label.style.color      = '#68d391';
       if (statEl) statEl.textContent = '🟢';
     }
-    knob.style.right = '2px';
-    knob.style.left  = 'auto';
+    knob.style.transform = 'translateX(24px)';
   } else {
     sw.style.background    = '#e53e3e';
     card.style.borderColor = '#742a2a';
     label.textContent      = 'غير متاح | Hors ligne';
     sub.textContent        = 'Appuyez pour vous mettre en ligne';
     label.style.color      = '#fc8181';
-    knob.style.right       = 'auto';
-    knob.style.left        = '2px';
+    knob.style.transform = 'translateX(0)';
     if (statEl) statEl.textContent = '🔴';
   }
 }
