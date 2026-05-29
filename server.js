@@ -47,9 +47,7 @@ app.post('/webhook', async (req, res) => {
       if (!phone || phone.length < 8) continue;
       if (isSpam(phone)) continue;
 
-      const msgType = msg.type;
-      const isMedia = ['sticker','image','audio','video','document','reaction','call'].includes(msgType);
-      const text    = (msgType === 'text' ? (msg.text?.body || '') : '').trim().toLowerCase();
+      const text = (msg.text?.body || '').trim().toLowerCase();
       const { getState, setState, clearState } = require('./queue');
       const { state, data } = getState(phone);
 
@@ -58,7 +56,7 @@ app.post('/webhook', async (req, res) => {
         const existing = await DB.drivers.get(phone);
         if (existing) {
           if (existing.validated) {
-            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${phone}`);
+            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${req.params.phone}`);
           } else if (existing.reg_step === 'done') {
             await sendText(phone, `⏳ طلبك قيد المراجعة | Dossier en cours d'examen.`);
           } else {
@@ -400,37 +398,6 @@ cron.schedule('0 3 * * *', async () => {
 // ─── HEALTHCHECK ─────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
-// ─── HISTORIQUE ───────────────────────────────────────────────
-app.get('/api/rides/history', async (req, res) => {
-  try {
-    const r = await DB.pool.query(
-      `SELECT r.*, d.name AS driver_name, c.name AS client_name
-       FROM rides r
-       LEFT JOIN drivers d ON d.phone = r.driver_phone
-       LEFT JOIN clients c ON c.phone = r.client_phone
-       WHERE r.status IN ('completed','cancelled')
-       ORDER BY r.created_at DESC LIMIT 100`
-    );
-    res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── COURSES ACTIVES (dashboard temps réel) ───────────────────
-app.get('/api/rides/active', async (req, res) => {
-  try {
-    const r = await DB.pool.query(
-      `SELECT r.*, d.name AS driver_name, d.photo_ext AS driver_photo, d.clim,
-              c.name AS client_name
-       FROM rides r
-       LEFT JOIN drivers d ON d.phone = r.driver_phone
-       LEFT JOIN clients c ON c.phone = r.client_phone
-       WHERE r.status NOT IN ('completed','cancelled')
-       ORDER BY r.created_at DESC LIMIT 50`
-    );
-    res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
 // ─── DÉMARRAGE ───────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 DB.init().then(async () => {
@@ -441,3 +408,14 @@ DB.init().then(async () => {
     console.log(`🔗 Webhook   : http://localhost:${PORT}/webhook\n`);
   });
 }).catch(err => { console.error('❌ DB Error:', err); process.exit(1); });
+
+// Historique des courses (terminées + annulées)
+app.get('/api/rides/history', async (req, res) => {
+  try {
+    const r = await DB.pool.query(
+      `SELECT * FROM rides WHERE status IN ('completed','cancelled')
+       ORDER BY created_at DESC LIMIT 100`
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
