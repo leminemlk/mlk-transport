@@ -36,7 +36,7 @@ function isSpam(phone) {
 // ─── CACHE ETA ───────────────────────────────────────────────
 const etaCache = new Map();
 const msgCount  = new Map();
-const alertedClients = new Set();
+const alertedClients = new Map(); // phone → dernière alerte timestamp
 
 // ─── WEBHOOK ─────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
@@ -471,28 +471,33 @@ app.delete('/api/blacklist/:phone', async (req, res) => {
 });
 
 // ─── CRON ────────────────────────────────────────────────────
-// Alerte client attend +5 min (toutes les minutes)
+// Alerte client attend +5 min — répéter toutes les 5 min
 cron.schedule('* * * * *', async () => {
   try {
     const waiting = await DB.pool.query(`
       SELECT client_phone, created_at FROM rides
       WHERE status='searching' AND created_at < NOW() - INTERVAL '5 minutes'
     `);
+    const now = Date.now();
     for (const row of waiting.rows) {
-      if (alertedClients.has(row.client_phone)) continue;
-      alertedClients.add(row.client_phone);
-      const mins = Math.floor((Date.now() - new Date(row.created_at)) / 60000);
+      const lastAlert = alertedClients.get(row.client_phone) || 0;
+      // Envoyer seulement si pas alerté depuis 5 min
+      if (now - lastAlert < 5 * 60 * 1000) continue;
+      alertedClients.set(row.client_phone, now);
+      const mins = Math.floor((now - new Date(row.created_at)) / 60000);
       await sendText(row.client_phone,
         `⏳ نأسف للانتظار | Désolé pour l'attente\n` +
         `_${mins} دقيقة | ${mins} min_\n\n` +
         `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
       ).catch(()=>{});
     }
-    const done = await DB.pool.query(
-      `SELECT client_phone FROM rides WHERE status NOT IN ('searching') AND client_phone = ANY($1)`,
-      [Array.from(alertedClients)]
-    );
-    done.rows.forEach(r => alertedClients.delete(r.client_phone));
+    // Nettoyer les courses terminées
+    for (const [phone] of alertedClients) {
+      const r = await DB.pool.query(
+        `SELECT id FROM rides WHERE client_phone=$1 AND status='searching' LIMIT 1`, [phone]
+      );
+      if (r.rows.length === 0) alertedClients.delete(phone);
+    }
   } catch(e) {}
 });
 
