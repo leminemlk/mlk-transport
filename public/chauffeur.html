@@ -84,6 +84,9 @@ input:focus{outline:none;border-color:#f6c90e}
       <div class="ride-timer" id="ride-timer"></div>
     </div>
 
+    <!-- Bouton se libérer -->
+    <button id="free-btn" onclick="freeMyself()" style="display:none;width:calc(100% - 40px);margin:0 20px 8px;background:#2a1a1a;color:#fc8181;border:2px solid #742a2a;border-radius:14px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">🔓 تحرير نفسي | Me libérer</button>
+
     <!-- Bouton fin de course -->
     <button id="finish-btn" class="btn-finish" style="display:none" onclick="finishRide()">
       ✅ *3* إنهاء الرحلة | Terminer la course
@@ -276,44 +279,48 @@ function highlightBtn(activeId) {
 async function toggleStatus() { setActive(); }
 
 let watchId = null;
+let bgInterval = null;
 
 function startGPS() {
   if (!navigator.geolocation) { alert('GPS غير متاح | GPS non disponible'); return; }
 
-  // watchPosition = mise à jour continue automatique (pas besoin d'intervalle)
+  // wakeLock immédiat pour garder l'écran actif
+  requestWakeLock();
+
+  // watchPosition principal
   watchId = navigator.geolocation.watchPosition(
     async (pos) => {
       await sendGPSUpdate(pos.coords.latitude, pos.coords.longitude);
-      if (!isOnline) {
-        isOnline = true;
-        updateToggleBtn();
-        requestWakeLock();
-      }
+      if (!isOnline) { isOnline = true; updateToggleBtn(); }
     },
     (err) => {
       console.warn('GPS err:', err.message);
-      // Retry après 10s si erreur
-      setTimeout(startGPS, 10000);
+      setTimeout(() => { stopGPS(); startGPS(); }, 10000);
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
   );
 
-  // Backup : forcer update toutes les 30s si watchPosition ne se déclenche pas
+  // Backup toutes les 15s (couvre l'écran éteint sur Android)
   gpsInterval = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
       p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
       () => {},
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
     );
-  }, 30000);
+  }, 15000);
+
+  // Reacquérir wakeLock si libéré (ex: appel entrant, autre app)
+  bgInterval = setInterval(async () => {
+    if (!wakeLock || wakeLock.released) {
+      await requestWakeLock();
+    }
+  }, 20000);
 }
 
 function stopGPS() {
-  if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-  }
-  if (gpsInterval) { clearInterval(gpsInterval); gpsInterval = null; }
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (gpsInterval)      { clearInterval(gpsInterval); gpsInterval = null; }
+  if (bgInterval)       { clearInterval(bgInterval);  bgInterval  = null; }
 }
 
 // Calcul distance en mètres
@@ -352,6 +359,7 @@ function startPing() {
         document.getElementById('stat-courses').textContent = data.todayRides || 0;
         // Bouton fin de course
         document.getElementById('finish-btn').style.display = data.hasActiveRide ? 'block' : 'none';
+        document.getElementById('free-btn').style.display = (data.hasActiveRide || data.driver.status === 'busy' || data.driver.status === 'pending') ? 'block' : 'none';
       }
       if (data.pendingOffer && !currentRide) showRideOffer(data.pendingOffer);
       else if (!data.pendingOffer && currentRide) hideRideOffer();
@@ -408,10 +416,39 @@ async function finishRide() {
   document.getElementById('finish-btn').style.display = 'none';
 }
 
+async function freeMyself() {
+  if (!confirm('Se libérer et annuler la course ?')) return;
+  await fetch(`/api/driver/${driverPhone}/free`, { method: 'POST' });
+  document.getElementById('free-btn').style.display = 'none';
+  document.getElementById('finish-btn').style.display = 'none';
+  loadStatus();
+}
+
 async function requestWakeLock() {
-  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        // Reacquérir si toujours en ligne
+        if (isOnline) setTimeout(requestWakeLock, 1000);
+      });
+    }
+  } catch(e) { console.warn('WakeLock:', e.message); }
 }
 function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null; } }
+
+// Reacquérir wakeLock + relancer GPS quand page redevient visible
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && isOnline) {
+    await requestWakeLock();
+    // Forcer une MAJ GPS immédiate
+    navigator.geolocation.getCurrentPosition(
+      p => sendGPSUpdate(p.coords.latitude, p.coords.longitude),
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+});
 
 function logout() {
   stopGPS();
