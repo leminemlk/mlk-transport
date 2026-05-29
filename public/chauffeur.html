@@ -155,7 +155,11 @@ window.onload = () => {
   // Lire le numéro depuis l'URL d'abord
   const urlPhone = new URLSearchParams(window.location.search).get('phone');
   if (urlPhone) {
+    // Phone dans l'URL → cacher le formulaire immédiatement
     driverPhone = urlPhone.replace(/\D/g, '');
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('dashboard-section').style.display = 'block';
+    document.getElementById('driver-name').textContent = '⏳ Chargement...';
     login(true);
   } else {
     // Sinon depuis localStorage
@@ -177,8 +181,8 @@ async function login(auto = false) {
       return;
     }
     if (!driver.validated) {
-      document.getElementById('login-error').textContent =
-        '⏳ طلبك قيد المراجعة | Dossier en attente de validation.';
+      document.getElementById('driver-name').textContent = '⏳ طلبك قيد المراجعة';
+      document.getElementById('driver-phone').textContent = 'Dossier en attente de validation admin.';
       return;
     }
     driverPhone = driver.phone;
