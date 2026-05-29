@@ -327,18 +327,39 @@ app.post('/api/driver/location', async (req, res) => {
     const { phone, lat, lng } = req.body;
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     await DB.drivers.setOnlineWithLocation(lat, lng, phone);
-    // ETA temps réel → WhatsApp au client si course active
+    // ETA temps réel + alerte 80m
     const activeRide = await DB.rides.getActiveByDriver(phone);
     if (activeRide && activeRide.client_lat && activeRide.client_lng) {
-      const dist = DB.distance(lat, lng, activeRide.client_lat, activeRide.client_lng);
-      const eta  = DB.estimateMinutes(dist);
-      const key  = `eta_${phone}`;
-      const last = etaCache.get(key);
-      if (!last || Math.abs(last - eta) >= 2) {
-        etaCache.set(key, eta);
+      const distKm = DB.distance(lat, lng, activeRide.client_lat, activeRide.client_lng);
+      const distM  = distKm * 1000;
+      const eta    = DB.estimateMinutes(distKm);
+
+      // Alerte 80m : répéter toutes les 30s si chauffeur proche
+      const nearKey  = `near_${phone}`;
+      const lastNear = etaCache.get(nearKey) || 0;
+      if (distM <= 50 && Date.now() - lastNear > 30000) {
+        etaCache.set(nearKey, Date.now());
+        // Notifier le client
         await sendText(activeRide.client_phone,
-          `🚕 سائقك على بعد *${dist.toFixed(1)} كم*\n⏱ يصل في *~${eta} دقيقة* | ~${eta} min`
+          `🚕 *سائقك وصل ! | Votre chauffeur est arrivé !*\n` +
+          `📍 يبعد عنك *${Math.round(distM)} متر* | à *${Math.round(distM)} m*`
         ).catch(()=>{});
+        // Notifier le chauffeur
+        await sendText(phone,
+          `📍 أنت على بعد ${Math.round(distM)} متر من العميل | ${Math.round(distM)} m
+⚠️ أنت قريب جداً ! | Vous êtes très proche !`
+        ).catch(()=>{});
+      }
+      // ETA normal si > 80m
+      else if (distM > 80) {
+        const etaKey  = `eta_${phone}`;
+        const lastEta = etaCache.get(etaKey);
+        if (!lastEta || Math.abs(lastEta - eta) >= 2) {
+          etaCache.set(etaKey, eta);
+          await sendText(activeRide.client_phone,
+            `🚕 سائقك على بعد *${distKm.toFixed(1)} كم*\n⏱ يصل في *~${eta} دقيقة* | ~${eta} min`
+          ).catch(()=>{});
+        }
       }
     }
     res.json({ ok: true });
@@ -369,6 +390,19 @@ app.get('/api/driver/:phone/status', async (req, res) => {
 app.post('/api/driver/:phone/offline', async (req, res) => {
   try {
     await DB.drivers.setStatus('offline', req.params.phone);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/driver/:phone/free', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    await DB.pool.query(
+      `UPDATE rides SET status='cancelled' WHERE driver_phone=$1 AND status IN ('offered','assigned','pending')`, [phone]
+    );
+    await DB.drivers.setStatus('online', phone);
+    const { processQueue } = require('./queue');
+    await processQueue(await DB.drivers.get(phone));
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -514,6 +548,83 @@ cron.schedule('*/10 * * * *', async () => {
       }
     }
     msgCount.clear();
+  } catch(e) {}
+});
+
+
+// ─── AUTO-CONFIRM : client + chauffeur au même endroit (<50m) ─
+cron.schedule('*/30 * * * * *', async () => {
+  try {
+    // Courses en statut 'offered' avec driver_phone assigné
+    const offered = await DB.pool.query(`
+      SELECT r.id, r.client_phone, r.client_lat, r.client_lng, r.driver_phone,
+             d.lat AS dlat, d.lng AS dlng
+      FROM rides r
+      JOIN drivers d ON d.phone = r.driver_phone
+      WHERE r.status='offered'
+      AND r.client_lat IS NOT NULL AND d.lat IS NOT NULL
+    `);
+    for (const row of offered.rows) {
+      const distM = DB.distance(row.client_lat, row.client_lng, row.dlat, row.dlng) * 1000;
+      if (distM <= 50) {
+        // Auto-confirmer la course
+        await DB.pool.query(`UPDATE rides SET status='assigned', assigned_at=NOW() WHERE id=$1`, [row.id]);
+        await DB.drivers.setStatus('busy', row.driver_phone);
+        await DB.queue.remove(row.client_phone);
+        const { pendingOffers } = require('./queue');
+        if (pendingOffers.has(row.driver_phone)) {
+          clearTimeout(pendingOffers.get(row.driver_phone).timer);
+          pendingOffers.delete(row.driver_phone);
+        }
+        await sendText(row.client_phone,
+          `✅ *تم تأكيد الرحلة ! | Course confirmée !*
+` +
+          `_التقيتم مع السائق | Vous avez rejoint le chauffeur._
+
+` +
+          `اكتب *0* بعد الرحلة لطلب سيارة جديدة
+Tapez *0* après la course pour en commander une nouvelle.`
+        ).catch(()=>{});
+        await sendText(row.driver_phone,
+          `✅ *تم تأكيد الرحلة تلقائياً ! | Course auto-confirmée !*
+
+` +
+          `📞 wa.me/${row.client_phone}
+
+` +
+          `اضغط *3* عند الانتهاء | Tapez *3* pour terminer.`
+        ).catch(()=>{});
+        console.log(`[AUTO-CONFIRM] Ride ${row.id} — distance: ${Math.round(distM)}m`);
+      }
+    }
+  } catch(e) {}
+});
+
+// ─── RESET CLIENT après 30min course assigned ────────────────
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    const old = await DB.pool.query(`
+      SELECT r.id, r.client_phone, r.driver_phone
+      FROM rides r
+      WHERE r.status='assigned'
+      AND r.assigned_at < NOW() - INTERVAL '30 minutes'
+    `);
+    for (const row of old.rows) {
+      // Terminer automatiquement + libérer le chauffeur
+      await DB.pool.query(`UPDATE rides SET status='completed', completed_at=NOW() WHERE id=$1`, [row.id]);
+      await DB.drivers.setStatus('online', row.driver_phone);
+      // Permettre au client de refaire une demande
+      await sendText(row.client_phone,
+        `🔄 *يمكنك طلب رحلة جديدة | Vous pouvez demander un nouveau taxi*
+
+` +
+        `📍 أرسل موقعك الجديد | Envoyez votre nouvelle position.
+👉 https://mlk-transport-production.up.railway.app/locate.html?phone=${row.client_phone}`
+      ).catch(()=>{});
+      const { processQueue } = require('./queue');
+      await processQueue(await DB.drivers.get(row.driver_phone));
+      console.log(`[RESET CLIENT] Ride ${row.id} auto-completed après 30min`);
+    }
   } catch(e) {}
 });
 
