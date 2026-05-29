@@ -97,9 +97,11 @@ async function handleClient(msg, phone) {
 
     for (let i = 0; i < nearby.length; i++) {
       const d = nearby[i];
+      const eta = DB.estimateMinutes(parseFloat(d.distKm));
       const caption =
         `*${i+1}. ${d.name}*\n` +
         `📍 ${d.distKm} كم | ${d.distKm} km\n` +
+        `⏱️ وقت الوصول : *${eta} دقيقة* | *${eta} min*\n` +
         `${d.clim ? '❄️ Climatisée' : '🌡 Sans clim'}\n` +
         `📞 *wa.me/${d.phone}*`;
 
