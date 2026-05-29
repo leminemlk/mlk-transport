@@ -90,7 +90,13 @@ async function handleClient(msg, phone, pushName = null) {
     const lng  = msg.location.longitude;
     const zone = msg.location.name || null;
 
-    // Vérifier course existante
+    // Annuler les courses searching bloquées (>5 min)
+    await DB.pool.query(
+      `UPDATE rides SET status='cancelled'
+       WHERE client_phone=$1 AND status='searching'
+       AND created_at < NOW() - INTERVAL '5 minutes'`, [phone]
+    );
+    // Vérifier si course récente encore active
     const existing = await DB.pool.query(
       `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
     );
