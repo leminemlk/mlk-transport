@@ -72,6 +72,15 @@ async function init() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS client_selections (
+      client_phone TEXT PRIMARY KEY,
+      ride_id      INTEGER,
+      drivers_json TEXT,
+      lat          REAL,
+      lng          REAL,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -164,11 +173,18 @@ const drivers = {
 // ─── CLIENTS ─────────────────────────────────────────────────
 
 const clients = {
-  upsert: async (phone) => {
-    await pool.query(
-      `INSERT INTO clients (phone) VALUES ($1) ON CONFLICT DO NOTHING`,
-      [phone]
-    );
+  upsert: async (phone, name = null) => {
+    if (name) {
+      await pool.query(
+        `INSERT INTO clients (phone, name) VALUES ($1, $2)
+         ON CONFLICT (phone) DO UPDATE SET name=$2 WHERE clients.name IS NULL`,
+        [phone, name]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO clients (phone) VALUES ($1) ON CONFLICT DO NOTHING`, [phone]
+      );
+    }
   },
   getAll: async () => {
     const r = await pool.query('SELECT * FROM clients ORDER BY created_at DESC');
@@ -309,8 +325,39 @@ function getWeekLabel() {
   return `${now.getFullYear()}-W${String(week).padStart(2,'0')}`;
 }
 
+async function getRadius() {
+  try {
+    const r = await pool.query(`SELECT value FROM settings WHERE key='radius'`);
+    return parseFloat(r.rows[0]?.value || '5');
+  } catch(e) { return 5; }
+}
+
+const clientSelections = {
+  set: async (phone, rideId, drivers, lat, lng) => {
+    await pool.query(
+      `INSERT INTO client_selections (client_phone, ride_id, drivers_json, lat, lng)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (client_phone) DO UPDATE SET ride_id=$2, drivers_json=$3, lat=$4, lng=$5, created_at=NOW()`,
+      [phone, rideId, JSON.stringify(drivers), lat, lng]
+    );
+  },
+  get: async (phone) => {
+    const r = await pool.query('SELECT * FROM client_selections WHERE client_phone=$1', [phone]);
+    if (!r.rows[0]) return null;
+    const row = r.rows[0];
+    return { rideId: row.ride_id, drivers: JSON.parse(row.drivers_json || '[]'), lat: row.lat, lng: row.lng };
+  },
+  delete: async (phone) => {
+    await pool.query('DELETE FROM client_selections WHERE client_phone=$1', [phone]);
+  },
+  getAll: async () => {
+    const r = await pool.query('SELECT * FROM client_selections ORDER BY created_at ASC');
+    return r.rows.map(row => ({ ...row, drivers: JSON.parse(row.drivers_json || '[]') }));
+  }
+};
+
 module.exports = {
-  pool, init,
+  pool, init, getRadius, clientSelections,
   drivers, clients, rides, queue, payments,
   distance, estimateMinutes, findNearestDrivers, getWeekLabel,
   blacklist: {
@@ -342,7 +389,8 @@ async function migrate() {
     `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS photo_int TEXT`,
     `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS validated INTEGER DEFAULT 0`,
     `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS reg_step  TEXT DEFAULT 'done'`,
-    `ALTER TABLE rides   ADD COLUMN IF NOT EXISTS zone      TEXT`,
+    `ALTER TABLE rides   ADD COLUMN IF NOT EXISTS zone       TEXT`,
+    `ALTER TABLE rides   ADD COLUMN IF NOT EXISTS offered_at TIMESTAMPTZ`,
     `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   ];
   for (const sql of cols) {

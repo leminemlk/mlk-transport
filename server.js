@@ -82,9 +82,10 @@ app.post('/webhook', async (req, res) => {
       if (await DB.blacklist.check(phone)) continue;
       msgCount.set(phone, (msgCount.get(phone) || 0) + 1);
 
-      const msgType = msg.type;
-      const isMedia = ['sticker','image','audio','video','document','reaction','call'].includes(msgType);
-      const text    = (msgType === 'text' ? (msg.text?.body || '') : '').trim().toLowerCase();
+      const msgType  = msg.type;
+      const pushName = msg.pushName || msg.notify || null;
+      const isMedia  = ['sticker','image','audio','video','document','reaction','call'].includes(msgType);
+      const text     = (msgType === 'text' ? (msg.text?.body || '') : '').trim().toLowerCase();
       const { getState, setState, clearState } = require('./queue');
       const { state, data } = getState(phone);
 
@@ -190,7 +191,7 @@ app.post('/webhook', async (req, res) => {
         }
         await handleDriver(msg, driver);
       } else {
-        await handleClient(msg, phone);
+        await handleClient(msg, phone, pushName);
       }
 
     } catch (err) {
@@ -370,8 +371,7 @@ app.get('/api/driver/:phone/status', async (req, res) => {
   try {
     const driver = await DB.drivers.get(req.params.phone);
     if (!driver) return res.status(404).json({ error: 'Introuvable' });
-    const { pendingOffers } = require('./queue');
-    const offer = pendingOffers.get(req.params.phone);
+        const offer = pendingOffers.get(req.params.phone);
     const [todayRides, activeRide] = await Promise.all([
       DB.rides.todayByDriver(req.params.phone),
       DB.rides.getActiveByDriver(req.params.phone)
@@ -570,13 +570,12 @@ cron.schedule('*/5 * * * *', async () => {
     `);
     for (const row of offered.rows) {
       const distM = DB.distance(row.client_lat, row.client_lng, row.dlat, row.dlng) * 1000;
-      if (distM <= 50) {
+      if (distM <= 100) {
         // Auto-confirmer la course
         await DB.pool.query(`UPDATE rides SET status='assigned', assigned_at=NOW() WHERE id=$1`, [row.id]);
         await DB.drivers.setStatus('busy', row.driver_phone);
         await DB.queue.remove(row.client_phone);
-        const { pendingOffers } = require('./queue');
-        if (pendingOffers.has(row.driver_phone)) {
+                if (pendingOffers.has(row.driver_phone)) {
           clearTimeout(pendingOffers.get(row.driver_phone).timer);
           pendingOffers.delete(row.driver_phone);
         }
@@ -630,6 +629,30 @@ cron.schedule('*/5 * * * *', async () => {
       console.log(`[RESET CLIENT] Ride ${row.id} auto-completed après 30min`);
     }
   } catch(e) {}
+});
+
+// Timeout offres chauffeurs (remplace setTimeout mémoire)
+cron.schedule('* * * * *', async () => {
+  try {
+    const timeout = await (async () => {
+      const r = await DB.pool.query(`SELECT value FROM settings WHERE key='timeout'`);
+      return parseInt(r.rows[0]?.value || '60');
+    })();
+    const expired = await DB.pool.query(`
+      SELECT * FROM rides
+      WHERE status='offered'
+      AND offered_at < NOW() - (${timeout} * INTERVAL '1 second')
+    `);
+    for (const ride of expired.rows) {
+      await DB.pool.query(`UPDATE rides SET status='searching', driver_phone=NULL WHERE id=$1`, [ride.id]);
+      if (ride.driver_phone) {
+        await DB.drivers.setStatus('online', ride.driver_phone);
+        await sendText(ride.driver_phone, `⏰ انتهى الوقت | Temps écoulé.`).catch(()=>{});
+      }
+      const { retryNextDriver } = require('./queue');
+      await retryNextDriver(ride.id, ride.client_phone, ride.client_lat, ride.client_lng, ride.driver_phone);
+    }
+  } catch(e) { console.error('[TIMEOUT CRON]', e.message); }
 });
 
 // Rappel abonnement chaque dimanche
@@ -768,6 +791,39 @@ app.post('/api/rides/:id/dispatch', async (req, res) => {
       from: ride.client_phone + '@s.whatsapp.net',
       location: { latitude: ride.client_lat, longitude: ride.client_lng, name: ride.zone }
     }, ride.client_phone);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/driver/:phone/nearby', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const driver = await DB.drivers.get(phone);
+    if (!driver || !driver.lat || !driver.lng) return res.json({ clients: [] });
+
+    const radius = await DB.getRadius();
+
+    const searching = await DB.pool.query(`
+      SELECT r.client_phone, r.client_lat, r.client_lng, r.zone, r.created_at,
+             c.name AS client_name
+      FROM rides r
+      LEFT JOIN clients c ON c.phone=r.client_phone
+      WHERE r.status='searching'
+      AND r.client_lat IS NOT NULL
+      AND r.created_at > NOW() - INTERVAL '2 hours'
+    `);
+
+    const clients = searching.rows
+      .map(r => {
+        const dist = DB.distance(driver.lat, driver.lng, r.client_lat, r.client_lng);
+        const mins = Math.floor((Date.now() - new Date(r.created_at)) / 60000);
+        const name = r.client_name || r.client_phone.slice(-4);
+        return { ...r, distKm: dist.toFixed(1), dist, elapsed: mins < 1 ? 'Maintenant' : `${mins} min`, displayName: name };
+      })
+      .filter(r => r.dist <= radius)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 5);
+
+    res.json({ clients });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
