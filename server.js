@@ -42,16 +42,16 @@ const alertedClients = new Map(); // phone → dernière alerte timestamp
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
-  // ── Appels entrants ────────────────────────────────────────
+  // ── Appels entrants (req.body.calls) ─────────────────────
   const calls = req.body?.calls || [];
   for (const call of calls) {
     if (call.from_me) continue;
     try {
       const phone = (call.from || '').replace('@s.whatsapp.net','').replace(/\D/g,'');
       if (!phone || phone.length < 8) continue;
-      if (isSpam(phone)) continue;
       if (await DB.blacklist.check(phone)) continue;
-      // Rejeter automatiquement l'appel
+      console.log(`[CALL] De ${phone} — id: ${call.id}`);
+      // Rejeter automatiquement
       if (call.id) {
         try {
           const axios = require('axios');
@@ -65,9 +65,29 @@ app.post('/webhook', async (req, res) => {
       if (driver && driver.validated) {
         await handleDriver(fakeMsg, driver);
       } else {
-        await handleClient(fakeMsg, phone);
+        await handleClient(fakeMsg, phone, null);
       }
     } catch(e) { console.error('[CALL ERR]', e.message); }
+  }
+
+  // ── Appels dans messages (fallback Whapi) ──────────────────
+  // Whapi envoie parfois les appels manqués comme messages système
+  const callMsgs = (req.body?.messages || []).filter(m => m.type === 'call' || m.type === 'missed_call');
+  for (const msg of callMsgs) {
+    if (msg.from_me) continue;
+    try {
+      const phone = msg.from.replace('@s.whatsapp.net','').replace(/\D/g,'');
+      if (!phone || phone.length < 8) continue;
+      if (await DB.blacklist.check(phone)) continue;
+      console.log(`[CALL MSG] De ${phone}`);
+      const driver = await DB.drivers.get(phone);
+      const fakeMsg = { type: 'call', from: msg.from };
+      if (driver && driver.validated) {
+        await handleDriver(fakeMsg, driver);
+      } else {
+        await handleClient(fakeMsg, phone, msg.pushName || null);
+      }
+    } catch(e) { console.error('[CALL MSG ERR]', e.message); }
   }
 
   const messages = req.body?.messages || [];
@@ -426,7 +446,13 @@ app.post('/api/locate', async (req, res) => {
     if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
 
-    // Vérifier si course déjà en cours
+    // Annuler les anciennes courses searching bloquées (>5 min)
+    await DB.pool.query(
+      `UPDATE rides SET status='cancelled'
+       WHERE client_phone=$1 AND status='searching'
+       AND created_at < NOW() - INTERVAL '5 minutes'`, [phone]
+    );
+    // Vérifier si course récente encore active
     const existing = await DB.pool.query(
       `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
     );

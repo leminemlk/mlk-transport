@@ -180,6 +180,14 @@ async function processQueue(driver) {
       const eta = DB.estimateMinutes(dist);
       const newDriver = { ...driver, distKm: dist.toFixed(1), dist };
 
+      // Annuler toutes les searching de ce client avant de relancer
+      if (!sel) {
+        await DB.pool.query(
+          `UPDATE rides SET status='cancelled' WHERE client_phone=$1 AND status='searching'`,
+          [ride.client_phone]
+        );
+      }
+
       if (sel && !sel.drivers.find(d => d.phone === driver.phone)) {
         sel.drivers.push(newDriver);
         await DB.clientSelections.set(ride.client_phone, sel.rideId, sel.drivers, sel.lat, sel.lng);
@@ -192,7 +200,10 @@ async function processQueue(driver) {
           catch(e) { await sendText(ride.client_phone, caption); }
         } else { await sendText(ride.client_phone, caption); }
       } else if (!sel) {
-        await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE id=$1`, [ride.id]);
+        await DB.pool.query(
+          `UPDATE rides SET status='cancelled' WHERE client_phone=$1 AND status='searching'`,
+          [ride.client_phone]
+        );
         await sendText(ride.client_phone, `🎉 *سائق متاح الآن !*`);
         const fakeMsg = { type:'location', from: ride.client_phone+'@s.whatsapp.net',
           location: { latitude: ride.client_lat, longitude: ride.client_lng, name: ride.zone } };
