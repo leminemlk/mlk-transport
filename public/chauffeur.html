@@ -84,9 +84,6 @@ input:focus{outline:none;border-color:#f6c90e}
       <div class="ride-timer" id="ride-timer"></div>
     </div>
 
-    <!-- Bouton se libérer -->
-    <button id="free-btn" onclick="freeMyself()" style="display:none;width:calc(100% - 40px);margin:0 20px 8px;background:#2a1a1a;color:#fc8181;border:2px solid #742a2a;border-radius:14px;padding:12px;font-size:14px;font-weight:700;cursor:pointer">🔓 تحرير نفسي | Me libérer</button>
-
     <!-- Bouton fin de course -->
     <button id="finish-btn" class="btn-finish" style="display:none" onclick="finishRide()">
       ✅ *3* إنهاء الرحلة | Terminer la course
@@ -359,7 +356,6 @@ function startPing() {
         document.getElementById('stat-courses').textContent = data.todayRides || 0;
         // Bouton fin de course
         document.getElementById('finish-btn').style.display = data.hasActiveRide ? 'block' : 'none';
-        document.getElementById('free-btn').style.display = (data.hasActiveRide || data.driver.status === 'busy' || data.driver.status === 'pending') ? 'block' : 'none';
       }
       if (data.pendingOffer && !currentRide) showRideOffer(data.pendingOffer);
       else if (!data.pendingOffer && currentRide) hideRideOffer();
@@ -414,11 +410,7 @@ async function respondRide(response) {
 async function finishRide() {
   await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
   document.getElementById('finish-btn').style.display = 'none';
-}
-
-async function freeMyself() {
-  if (!confirm('Se libérer et annuler la course ?')) return;
-  await fetch(`/api/driver/${driverPhone}/free`, { method: 'POST' });
+}/free`, { method: 'POST' });
   document.getElementById('free-btn').style.display = 'none';
   document.getElementById('finish-btn').style.display = 'none';
   loadStatus();
