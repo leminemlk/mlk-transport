@@ -229,9 +229,17 @@ function showDashboard(data) {
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('drv-name').textContent = data.driver.name;
   document.getElementById('wa-link').href = `https://wa.me/${driverPhone}`;
-  isOnline = data.driver.status === 'online' || data.driver.status === 'busy';
+  
+  const wasOnline = data.driver.status === 'online' || data.driver.status === 'busy';
+  isOnline = wasOnline;
   updateUI(data.hasActiveRide, data.today);
   startPing();
+  
+  // Si le chauffeur était en ligne → démarrer GPS automatiquement
+  if (wasOnline && gpsWatchId === null) {
+    requestWakeLock();
+    startGPS();
+  }
 }
 
 // ─── UI ─────────────────────────────────────────────────────
@@ -271,15 +279,17 @@ async function handleToggle() {
     await finishRide(); return;
   }
   if (isOnline) {
+    // Passer hors ligne
     stopGPS();
     isOnline = false;
     updateUI(false);
     await fetch(`${BASE}/api/driver/${driverPhone}/offline`, { method:'POST' }).catch(()=>{});
   } else {
+    // Passer en ligne → mettre vert immédiatement
     isOnline = true;
     updateUI(false);
     requestWakeLock();
-    startGPS();
+    if (gpsWatchId === null) startGPS();
   }
 }
 
@@ -313,12 +323,20 @@ function stopGPS() {
 }
 
 async function sendGPS(lat, lng) {
+  if (!driverPhone) return;
   try {
-    await fetch(`${BASE}/api/driver/${driverPhone}/location`, {
+    const r = await fetch(`${BASE}/api/driver/location`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ lat, lng })
+      body: JSON.stringify({ phone: driverPhone, lat, lng })
     });
-  } catch(e) {}
+    if (r.ok) {
+      // GPS envoyé → confirmer statut online visuellement
+      document.getElementById('gps-dot').className = 'gps-dot active';
+      document.getElementById('gps-text').textContent = 'GPS نشط | actif — ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    }
+  } catch(e) {
+    document.getElementById('gps-dot').className = 'gps-dot inactive';
+  }
 }
 
 // ─── WAKEKLOCK ───────────────────────────────────────────────
@@ -360,7 +378,11 @@ async function loadStatus() {
       { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return; // Serveur down → garder état actuel, ne pas déconnecter
     const d = await r.json();
-    isOnline = d.driver.status==='online'||d.driver.status==='busy';
+    // Ne pas mettre offline si le GPS tourne encore (évite écrasement état local)
+    const serverOnline = d.driver.status==='online'||d.driver.status==='busy';
+    if (serverOnline || gpsWatchId === null) {
+      isOnline = serverOnline;
+    }
     if (d.driver.name) document.getElementById('drv-name').textContent = d.driver.name;
     updateUI(d.hasActiveRide, d.today);
     document.getElementById('finish-btn').style.display = d.hasActiveRide ? 'block' : 'none';
