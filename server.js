@@ -751,8 +751,17 @@ app.post('/api/rides/:id/dispatch', async (req, res) => {
     const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [id]);
     const ride = r.rows[0];
     if (!ride) return res.status(404).json({ error: 'Introuvable' });
-    await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE id=$1`, [id]);
+
+    // Annuler TOUTES les courses en cours pour ce client
+    await DB.pool.query(
+      `UPDATE rides SET status='cancelled'
+       WHERE client_phone=$1 AND status IN ('searching','offered')`,
+      [ride.client_phone]
+    );
+    await DB.queue.remove(ride.client_phone);
+
     res.json({ ok: true });
+
     const { handleClient } = require('./handlers/client');
     await handleClient({
       type: 'location',
