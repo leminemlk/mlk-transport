@@ -35,7 +35,7 @@ audio{display:none}
 <div class="brand">MK TAXI</div>
 <div class="tagline">نقلك في دقيقة | Votre taxi en 1 minute</div>
 
-<button class="btn-main" id="mainBtn" onclick="requestTaxi()">
+<button class="btn-main" id="mainBtn" onclick="requestTaxi()" style="display:none">
   <div class="btn-icon">📍</div>
   <div class="btn-ar">اضغط لطلب تاكسي</div>
   <div class="btn-fr">Appuyez pour commander un taxi</div>
@@ -44,33 +44,18 @@ audio{display:none}
 <div class="status" id="status"></div>
 <button class="cancel-btn" id="cancelBtn" onclick="cancelRide()">❌ إلغاء | Annuler</button>
 
-<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto"></audio>
 
 <style>
-#splash{position:fixed;inset:0;background:#0f1117;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;cursor:pointer}
-#splash .sp-icon{font-size:80px;margin-bottom:16px;animation:bounce 1s infinite}
-#splash .sp-text{font-size:20px;font-weight:700;color:#f6c90e;text-align:center;line-height:1.6}
-#splash .sp-sub{font-size:14px;color:#718096;margin-top:8px;text-align:center}
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 </style>
 
-<div id="splash" onclick="startApp()">
-  <div class="sp-icon">🔊</div>
-  <div class="sp-text">اضغط هنا للبدء<br>Appuyez pour commencer</div>
-  <div class="sp-sub">🚕 MK TAXI</div>
-</div>
-
 <script>
 const phone = new URLSearchParams(location.search).get('phone') || '';
+
+// Lancer automatiquement la demande de localisation
+window.addEventListener('load', () => setTimeout(requestTaxi, 500));
 let rideRequested = false;
 
-function startApp() {
-  // Jouer le vocal (interaction utilisateur garantie)
-  const a = document.getElementById('voiceMsg');
-  if (a) a.play().catch(()=>{});
-  // Cacher le splash
-  document.getElementById('splash').style.display = 'none';
-}
 
 function playVoice() {
   const a = document.getElementById('voiceMsg');
