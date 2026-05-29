@@ -414,8 +414,7 @@ async function respondRide(response) {
 async function finishRide() {
   await fetch(`/api/driver/${driverPhone}/finish`, { method: 'POST' });
   document.getElementById('finish-btn').style.display = 'none';
-}/free`, { method: 'POST' });
-  document.getElementById('free-btn').style.display = 'none';
+);
   document.getElementById('finish-btn').style.display = 'none';
   loadStatus();
 }
