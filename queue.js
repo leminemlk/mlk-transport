@@ -230,16 +230,45 @@ async function refuseRide(driverPhone) {
 }
 
 async function processQueue(driver) {
+  if (!driver || driver.status !== 'online') return;
+
+  // 1. Chercher dans la table queue
   const queueList = await DB.queue.getAll();
-  if (queueList.length === 0) return;
+  if (queueList.length > 0) {
+    const first = queueList[0];
+    const rideId = await DB.rides.create(first.client_phone, first.client_lat, first.client_lng);
+    await sendText(first.client_phone,
+      `🎉 سائق متاح الآن ! | Un chauffeur est disponible !\nجاري إرسال طلبك...\nEnvoi de votre demande...`
+    );
+    await offerRide(driver, rideId, first.client_phone, first.client_lat, first.client_lng);
+    return;
+  }
 
-  const first = queueList[0];
-  const rideId = await DB.rides.create(first.client_phone, first.client_lat, first.client_lng);
-
-  await sendText(first.client_phone,
-    `🎉 سائق متاح الآن ! | Un chauffeur est disponible !\nجاري إرسال طلبك...\nEnvoi de votre demande...`
-  );
-  await offerRide(driver, rideId, first.client_phone, first.client_lat, first.client_lng);
+  // 2. Chercher dans rides.status='searching' (courses non traitées)
+  try {
+    const stuck = await DB.pool.query(`
+      SELECT * FROM rides
+      WHERE status='searching'
+      AND created_at > NOW() - INTERVAL '2 hours'
+      ORDER BY created_at ASC LIMIT 1
+    `);
+    if (stuck.rows.length > 0) {
+      const ride = stuck.rows[0];
+      // Envoyer la liste des chauffeurs au client
+      const { handleClient } = require('./handlers/client');
+      const fakeMsg = {
+        type: 'location',
+        from: ride.client_phone + '@s.whatsapp.net',
+        location: { latitude: ride.client_lat, longitude: ride.client_lng, name: ride.zone }
+      };
+      // Annuler l'ancienne course et relancer
+      await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE id=$1`, [ride.id]);
+      await sendText(ride.client_phone,
+        `🎉 *سائق متاح الآن ! | Un chauffeur est disponible !*\n_إعادة البحث...\ Recherche relancée..._`
+      );
+      await handleClient(fakeMsg, ride.client_phone);
+    }
+  } catch(e) { console.error('[processQueue]', e.message); }
 }
 
 module.exports = {
