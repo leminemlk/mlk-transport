@@ -44,20 +44,25 @@ audio{display:none}
 <div class="status" id="status"></div>
 <button class="cancel-btn" id="cancelBtn" onclick="cancelRide()">❌ إلغاء | Annuler</button>
 
-<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto"></audio>
+<audio id="voiceMsg" src="/msg_taxi.ogg" preload="auto" autoplay></audio>
 
 <script>
 const phone = new URLSearchParams(location.search).get('phone') || '';
 let rideRequested = false;
 
-// Jouer le vocal automatiquement au premier toucher
-document.addEventListener('touchstart', playVoice, { once: true });
-document.addEventListener('click', playVoice, { once: true });
-
 function playVoice() {
   const a = document.getElementById('voiceMsg');
   if (a) a.play().catch(()=>{});
 }
+
+// Jouer dès l'ouverture (fonctionne si page ouverte depuis WhatsApp)
+window.addEventListener('load', () => {
+  setTimeout(playVoice, 300);
+});
+
+// Fallback : premier toucher si autoplay bloqué
+document.addEventListener('touchstart', playVoice, { once: true });
+document.addEventListener('click', playVoice, { once: true });
 
 function setStatus(msg, type) {
   const el = document.getElementById('status');
