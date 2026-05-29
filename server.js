@@ -394,19 +394,6 @@ app.post('/api/driver/:phone/offline', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/driver/:phone/free', async (req, res) => {
-  try {
-    const phone = req.params.phone;
-    await DB.pool.query(
-      `UPDATE rides SET status='cancelled' WHERE driver_phone=$1 AND status IN ('offered','assigned','pending')`, [phone]
-    );
-    await DB.drivers.setStatus('online', phone);
-    const { processQueue } = require('./queue');
-    await processQueue(await DB.drivers.get(phone));
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
 app.post('/api/driver/:phone/finish', async (req, res) => {
   try {
     const phone = req.params.phone;
@@ -553,7 +540,7 @@ cron.schedule('*/10 * * * *', async () => {
 
 
 // ─── AUTO-CONFIRM : client + chauffeur au même endroit (<50m) ─
-cron.schedule('*/30 * * * * *', async () => {
+cron.schedule('*/5 * * * *', async () => {
   try {
     // Courses en statut 'offered' avec driver_phone assigné
     const offered = await DB.pool.query(`
