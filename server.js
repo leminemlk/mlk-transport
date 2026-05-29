@@ -555,10 +555,12 @@ cron.schedule('0 3 * * *', async () => {
 // ─── NETTOYAGE COURSES BLOQUÉES ──────────────────────────────
 app.post('/api/cleanup', async (req, res) => {
   try {
+    const minutes = parseInt(req.body?.minutes ?? 30);
+    const interval = minutes === 0 ? '0 minutes' : `${minutes} minutes`;
     const cancelled = await DB.pool.query(`
       UPDATE rides SET status='cancelled'
       WHERE status IN ('searching','offered')
-      AND created_at < NOW() - INTERVAL '30 minutes'
+      AND created_at < NOW() - INTERVAL '${interval}'
       RETURNING id, driver_phone
     `);
     const driverPhones = [...new Set(
@@ -597,6 +599,47 @@ app.post('/api/settings/:key', async (req, res) => {
       [key, String(value)]
     );
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── ACTIONS PAR COURSE ──────────────────────────────────────
+app.post('/api/rides/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ride = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [id]);
+    if (ride.rows[0]?.driver_phone) {
+      await DB.pool.query(`UPDATE drivers SET status='online' WHERE phone=$1`, [ride.rows[0].driver_phone]);
+    }
+    await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE id=$1`, [id]);
+    await DB.queue.remove(ride.rows[0]?.client_phone);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/rides/:id/complete', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ride = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [id]);
+    if (ride.rows[0]?.driver_phone) {
+      await DB.pool.query(`UPDATE drivers SET status='online' WHERE phone=$1`, [ride.rows[0].driver_phone]);
+      const { processQueue } = require('./queue');
+      await processQueue(await DB.drivers.get(ride.rows[0].driver_phone));
+    }
+    await DB.pool.query(`UPDATE rides SET status='completed', completed_at=NOW() WHERE id=$1`, [id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/rides/:id/dispatch', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [id]);
+    const ride = r.rows[0];
+    if (!ride) return res.status(404).json({ error: 'Introuvable' });
+    await DB.pool.query(`UPDATE rides SET status='searching', driver_phone=NULL WHERE id=$1`, [id]);
+    const { findDriver } = require('./queue');
+    res.json({ ok: true });
+    await findDriver(ride.client_phone, ride.client_lat, ride.client_lng, ride.id);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
