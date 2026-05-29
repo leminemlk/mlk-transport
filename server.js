@@ -412,6 +412,20 @@ app.post('/api/locate', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Mettre à jour position client en cours de recherche
+app.post('/api/locate/update', async (req, res) => {
+  try {
+    const { phone, lat, lng } = req.body;
+    if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
+    await DB.pool.query(
+      `UPDATE rides SET client_lat=$1, client_lng=$2
+       WHERE client_phone=$3 AND status IN ('searching','offered')`,
+      [lat, lng, phone]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Annuler depuis locate.html
 app.post('/api/locate/cancel', async (req, res) => {
   try {

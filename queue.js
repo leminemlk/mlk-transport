@@ -7,12 +7,29 @@ const DB = require('./db');
 const pendingOffers = new Map();
 const states = new Map();
 
+// Lire le rayon depuis les paramètres DB
+async function getRadius() {
+  try {
+    const r = await DB.pool.query(`SELECT value FROM settings WHERE key='radius'`);
+    return parseFloat(r.rows[0]?.value || '5');
+  } catch(e) { return 5; }
+}
+
+// Lire le timeout depuis les paramètres DB
+async function getTimeout() {
+  try {
+    const r = await DB.pool.query(`SELECT value FROM settings WHERE key='timeout'`);
+    return parseInt(r.rows[0]?.value || '60') * 1000;
+  } catch(e) { return 60000; }
+}
+
 function getState(phone) { return states.get(phone) || { state: 'idle', data: {} }; }
 function setState(phone, state, data = {}) { states.set(phone, { state, data }); }
 function clearState(phone) { states.delete(phone); }
 
 async function findDriver(clientPhone, clientLat, clientLng, rideId) {
-  const drivers = await DB.findNearestDrivers(clientLat, clientLng, 5);
+  const radius = await getRadius();
+  const drivers = await DB.findNearestDrivers(clientLat, clientLng, radius);
   const available = drivers.filter(d => !pendingOffers.has(d.phone));
 
   if (available.length === 0) {
@@ -54,13 +71,14 @@ async function offerRide(driver, rideId, clientPhone, clientLat, clientLng) {
 
   await sendLocation(driver.phone, clientLat, clientLng, 'موقع العميل | Position client');
 
+  const timeout = await getTimeout();
   const timer = setTimeout(async () => {
     if (pendingOffers.has(driver.phone)) {
       pendingOffers.delete(driver.phone);
       await sendText(driver.phone, '⏰ انتهى الوقت | Temps écoulé — course proposée à un autre.');
       await retryNextDriver(rideId, clientPhone, clientLat, clientLng, driver.phone);
     }
-  }, 60_000);
+  }, timeout);
 
   pendingOffers.set(driver.phone, { rideId, clientPhone, clientLat, clientLng, timer });
   // Stocker aussi en DB pour persistance
@@ -73,7 +91,8 @@ async function offerRide(driver, rideId, clientPhone, clientLat, clientLng) {
 }
 
 async function retryNextDriver(rideId, clientPhone, clientLat, clientLng, skipPhone) {
-  const drivers = await DB.findNearestDrivers(clientLat, clientLng, 5);
+  const radius = await getRadius();
+  const drivers = await DB.findNearestDrivers(clientLat, clientLng, radius);
   const next = drivers.find(d => d.phone !== skipPhone && !pendingOffers.has(d.phone));
 
   if (next) {
