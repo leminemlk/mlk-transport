@@ -617,6 +617,7 @@ async function saveDriver() {
   closeModal('driver-modal');
   toast('✅ Chauffeur sauvegardé !');
   loadDrivers();
+  loadSettings();
 }
 
 async function validateDriver(phone) {
