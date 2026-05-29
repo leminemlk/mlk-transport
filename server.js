@@ -33,11 +33,44 @@ function isSpam(phone) {
   return false;
 }
 
+// ─── CACHE ETA ───────────────────────────────────────────────
+const etaCache = new Map();
+const msgCount  = new Map();
+const alertedClients = new Set();
+
 // ─── WEBHOOK ─────────────────────────────────────────────────
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
-  const messages = req.body?.messages || [];
 
+  // ── Appels entrants ────────────────────────────────────────
+  const calls = req.body?.calls || [];
+  for (const call of calls) {
+    if (call.from_me) continue;
+    try {
+      const phone = (call.from || '').replace('@s.whatsapp.net','').replace(/\D/g,'');
+      if (!phone || phone.length < 8) continue;
+      if (isSpam(phone)) continue;
+      if (await DB.blacklist.check(phone)) continue;
+      // Rejeter automatiquement l'appel
+      if (call.id) {
+        try {
+          const axios = require('axios');
+          await axios.post(`https://gate.whapi.cloud/calls/${call.id}/reject`, {},
+            { headers: { Authorization: `Bearer ${process.env.WHAPI_TOKEN}` }, timeout: 5000 }
+          );
+        } catch(e) {}
+      }
+      const driver = await DB.drivers.get(phone);
+      const fakeMsg = { type: 'call', from: call.from };
+      if (driver && driver.validated) {
+        await handleDriver(fakeMsg, driver);
+      } else {
+        await handleClient(fakeMsg, phone);
+      }
+    } catch(e) { console.error('[CALL ERR]', e.message); }
+  }
+
+  const messages = req.body?.messages || [];
   for (const msg of messages) {
     if (msg.from_me) continue;
     if (isDuplicate(msg.id)) continue;
@@ -46,8 +79,12 @@ app.post('/webhook', async (req, res) => {
       const phone = msg.from.replace('@s.whatsapp.net', '').replace(/\D/g, '');
       if (!phone || phone.length < 8) continue;
       if (isSpam(phone)) continue;
+      if (await DB.blacklist.check(phone)) continue;
+      msgCount.set(phone, (msgCount.get(phone) || 0) + 1);
 
-      const text = (msg.text?.body || '').trim().toLowerCase();
+      const msgType = msg.type;
+      const isMedia = ['sticker','image','audio','video','document','reaction','call'].includes(msgType);
+      const text    = (msgType === 'text' ? (msg.text?.body || '') : '').trim().toLowerCase();
       const { getState, setState, clearState } = require('./queue');
       const { state, data } = getState(phone);
 
@@ -56,7 +93,7 @@ app.post('/webhook', async (req, res) => {
         const existing = await DB.drivers.get(phone);
         if (existing) {
           if (existing.validated) {
-            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${req.params.phone}`);
+            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${phone}`);
           } else if (existing.reg_step === 'done') {
             await sendText(phone, `⏳ طلبك قيد المراجعة | Dossier en cours d'examen.`);
           } else {
@@ -290,6 +327,20 @@ app.post('/api/driver/location', async (req, res) => {
     const { phone, lat, lng } = req.body;
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     await DB.drivers.setOnlineWithLocation(lat, lng, phone);
+    // ETA temps réel → WhatsApp au client si course active
+    const activeRide = await DB.rides.getActiveByDriver(phone);
+    if (activeRide && activeRide.client_lat && activeRide.client_lng) {
+      const dist = DB.distance(lat, lng, activeRide.client_lat, activeRide.client_lng);
+      const eta  = DB.estimateMinutes(dist);
+      const key  = `eta_${phone}`;
+      const last = etaCache.get(key);
+      if (!last || Math.abs(last - eta) >= 2) {
+        etaCache.set(key, eta);
+        await sendText(activeRide.client_phone,
+          `🚕 سائقك على بعد *${dist.toFixed(1)} كم*\n⏱ يصل في *~${eta} دقيقة* | ~${eta} min`
+        ).catch(()=>{});
+      }
+    }
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -351,6 +402,7 @@ app.post('/api/locate', async (req, res) => {
   try {
     const { phone, lat, lng } = req.body;
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
+    if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
     const rideId = await DB.rides.create(phone, lat, lng);
     const { findDriver } = require('./queue');
@@ -360,7 +412,92 @@ app.post('/api/locate', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Annuler depuis locate.html
+app.post('/api/locate/cancel', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone requis' });
+    await DB.queue.remove(phone);
+    await DB.pool.query(
+      `UPDATE rides SET status='cancelled' WHERE client_phone=$1 AND status IN ('searching','offered')`,
+      [phone]
+    );
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Statut course pour polling locate.html
+app.get('/api/ride/status', async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.status(400).json({ error: 'phone requis' });
+    const r = await DB.pool.query(
+      `SELECT status FROM rides WHERE client_phone=$1 ORDER BY created_at DESC LIMIT 1`, [phone]
+    );
+    res.json({ status: r.rows[0]?.status || 'none' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── API BLACKLIST ─────────────────────────────────────────────
+app.get('/api/blacklist', async (req, res) => {
+  try { res.json(await DB.blacklist.getAll()); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/blacklist/:phone', async (req, res) => {
+  try {
+    await DB.blacklist.add(req.params.phone, req.body.reason || 'Admin', 0);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/blacklist/:phone', async (req, res) => {
+  try {
+    await DB.blacklist.remove(req.params.phone);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── CRON ────────────────────────────────────────────────────
+// Alerte client attend +5 min (toutes les minutes)
+cron.schedule('* * * * *', async () => {
+  try {
+    const waiting = await DB.pool.query(`
+      SELECT client_phone, created_at FROM rides
+      WHERE status='searching' AND created_at < NOW() - INTERVAL '5 minutes'
+    `);
+    for (const row of waiting.rows) {
+      if (alertedClients.has(row.client_phone)) continue;
+      alertedClients.add(row.client_phone);
+      const mins = Math.floor((Date.now() - new Date(row.created_at)) / 60000);
+      await sendText(row.client_phone,
+        `⏳ نأسف للانتظار | Désolé pour l'attente\n` +
+        `_${mins} دقيقة | ${mins} min_\n\n` +
+        `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
+      ).catch(()=>{});
+    }
+    const done = await DB.pool.query(
+      `SELECT client_phone FROM rides WHERE status NOT IN ('searching') AND client_phone = ANY($1)`,
+      [Array.from(alertedClients)]
+    );
+    done.rows.forEach(r => alertedClients.delete(r.client_phone));
+  } catch(e) {}
+});
+
+// Auto-blacklist spam (toutes les 10 min)
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    for (const [phone, count] of msgCount.entries()) {
+      if (count >= 20) {
+        const isDriver = await DB.drivers.get(phone);
+        if (!isDriver) {
+          await DB.blacklist.add(phone, `Auto: ${count} msgs/10min`, 1);
+          console.log(`[BLACKLIST] Auto ${phone}`);
+        }
+      }
+    }
+    msgCount.clear();
+  } catch(e) {}
+});
+
 // Rappel abonnement chaque dimanche
 cron.schedule('0 9 * * 0', async () => {
   const expiring = await DB.drivers.getExpiring();
@@ -399,6 +536,37 @@ cron.schedule('0 3 * * *', async () => {
 // ─── HEALTHCHECK ─────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+// Historique des courses
+app.get('/api/rides/history', async (req, res) => {
+  try {
+    const r = await DB.pool.query(
+      `SELECT r.*, d.name AS driver_name, c.name AS client_name
+       FROM rides r
+       LEFT JOIN drivers d ON d.phone=r.driver_phone
+       LEFT JOIN clients c ON c.phone=r.client_phone
+       WHERE r.status IN ('completed','cancelled')
+       ORDER BY r.created_at DESC LIMIT 100`
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Courses actives pour dashboard
+app.get('/api/rides/active', async (req, res) => {
+  try {
+    const r = await DB.pool.query(
+      `SELECT r.*, d.name AS driver_name, d.photo_ext AS driver_photo,
+              c.name AS client_name
+       FROM rides r
+       LEFT JOIN drivers d ON d.phone=r.driver_phone
+       LEFT JOIN clients c ON c.phone=r.client_phone
+       WHERE r.status NOT IN ('completed','cancelled')
+       ORDER BY r.created_at DESC LIMIT 50`
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── DÉMARRAGE ───────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 DB.init().then(async () => {
@@ -410,13 +578,6 @@ DB.init().then(async () => {
   });
 }).catch(err => { console.error('❌ DB Error:', err); process.exit(1); });
 
-// Historique des courses (terminées + annulées)
-app.get('/api/rides/history', async (req, res) => {
-  try {
-    const r = await DB.pool.query(
-      `SELECT * FROM rides WHERE status IN ('completed','cancelled')
-       ORDER BY created_at DESC LIMIT 100`
-    );
-    res.json(r.rows);
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
+// ─── APPELS ENTRANTS ─────────────────────────────────────────
+// (géré dans le webhook via req.body.calls — voir plus haut)
+

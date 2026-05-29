@@ -36,11 +36,17 @@ async function offerRide(driver, rideId, clientPhone, clientLat, clientLng) {
   const eta = DB.estimateMinutes(dist);
   const clim = driver.clim ? '❄️ مكيفة | Climatisée' : '🌡 بدون تكييف | Sans clim';
 
+  // Photo voiture du chauffeur
+  if (driver.photo_ext) {
+    try { await sendImage(driver.phone, driver.photo_ext, `🚗 ${driver.name} — MK TAXI`); } catch(e) {}
+  }
+
   await sendText(driver.phone,
     `🚖 *طلب رحلة جديد ! | Nouvelle course !*\n\n` +
     `📍 العميل على بعد *${dist.toFixed(1)} كم* | à *${dist.toFixed(1)} km*\n` +
     `⏱ وقت الوصول : *${eta} دقيقة* | *${eta} min*\n` +
     `📞 رقم العميل : wa.me/${clientPhone}\n` +
+    `${clim}\n\n` +
     `✅ *1* → قبول | Accepter\n` +
     `❌ *2* → رفض | Refuser\n\n` +
     `_(60 ثانية للرد | 60 secondes)_`
@@ -76,7 +82,7 @@ async function retryNextDriver(rideId, clientPhone, clientLat, clientLng, skipPh
     await DB.queue.add(clientPhone, clientLat, clientLng);
     const pos = await DB.queue.getPosition(clientPhone);
     await sendText(clientPhone,
-      `😔 لا يوجد سائق متاح | Aucun chauffeur disponible.\n\n` +
+      `⏳ *نبحث عن سيارة أخرى...*\n*Nous cherchons un autre taxi...*\n\n` +
       `أنت رقم *${pos}* في قائمة الانتظار.\n` +
       `Vous êtes *n°${pos}* dans la file.`
     );
