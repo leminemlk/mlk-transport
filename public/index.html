@@ -655,10 +655,30 @@ async function sendBroadcast() {
   document.getElementById('bc-text').value = '';
 }
 
-function saveSetting(key) {
+async function saveSetting(key) {
   const val = document.getElementById(`set-${key}`).value;
-  localStorage.setItem(`mlk_set_${key}`, val);
-  toast(`✅ ${key} = ${val} sauvegardé localement`);
+  try {
+    const r = await fetch(`/api/settings/${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: val })
+    });
+    if (r.ok) toast(`✅ Paramètre sauvegardé`);
+    else toast(`❌ Erreur sauvegarde`, true);
+  } catch(e) { toast('❌ Erreur réseau', true); }
+}
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const data = await r.json();
+    const map = {};
+    data.forEach(s => map[s.key] = s.value);
+    if (map.price)   document.getElementById('set-price').value   = map.price;
+    if (map.trial)   document.getElementById('set-trial').value   = map.trial;
+    if (map.radius)  document.getElementById('set-radius').value  = map.radius;
+    if (map.timeout) document.getElementById('set-timeout').value = map.timeout;
+  } catch(e) {}
 }
 
 // ─── UTILS ────────────────────────────────────────────────────
