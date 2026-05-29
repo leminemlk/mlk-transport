@@ -425,11 +425,28 @@ app.post('/api/locate', async (req, res) => {
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
+
+    // Vérifier si course déjà en cours
+    const existing = await DB.pool.query(
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
+    );
+    if (existing.rows.length > 0) {
+      return res.json({ ok: true, status: 'already_searching' });
+    }
+
     const rideId = await DB.rides.create(phone, lat, lng);
-    const { findDriver } = require('./queue');
     res.json({ ok: true });
-    await sendText(phone, `🔍 جاري البحث عن سائق...\nRecherche d'un chauffeur...`);
-    await findDriver(phone, lat, lng, rideId);
+
+    // Utiliser le même flow que WhatsApp : afficher la liste des chauffeurs
+    const { handleClient } = require('./handlers/client');
+    const fakeMsg = {
+      type: 'location',
+      from: phone + '@s.whatsapp.net',
+      location: { latitude: lat, longitude: lng, name: null }
+    };
+    // Supprimer la course créée juste au-dessus car handleClient va en créer une nouvelle
+    await DB.pool.query(`DELETE FROM rides WHERE id=$1`, [rideId]);
+    await handleClient(fakeMsg, phone);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
