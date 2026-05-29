@@ -64,11 +64,6 @@ async function init() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
-    CREATE TABLE IF NOT EXISTS settings (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS blacklist (
       id SERIAL PRIMARY KEY,
       phone TEXT UNIQUE NOT NULL,
@@ -76,8 +71,12 @@ async function init() {
       auto INTEGER DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
-  // Valeurs par défaut des paramètres
   await pool.query(`
     INSERT INTO settings (key, value) VALUES
       ('price',   '500'),
@@ -344,6 +343,7 @@ async function migrate() {
     `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS validated INTEGER DEFAULT 0`,
     `ALTER TABLE drivers ADD COLUMN IF NOT EXISTS reg_step  TEXT DEFAULT 'done'`,
     `ALTER TABLE rides   ADD COLUMN IF NOT EXISTS zone      TEXT`,
+    `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   ];
   for (const sql of cols) {
     try { await pool.query(sql); } catch(e) {}
