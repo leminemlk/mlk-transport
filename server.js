@@ -95,8 +95,7 @@ app.post('/webhook', async (req, res) => {
         const existing = await DB.drivers.get(phone);
         if (existing) {
           if (existing.validated) {
-            const tok2 = await DB.getOrCreateDriverToken(phone);
-            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?t=${tok2}`);
+            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${phone}`);
           } else if (existing.reg_step === 'done') {
             await sendText(phone, `⏳ طلبك قيد المراجعة | Dossier en cours d'examen.`);
           } else {
@@ -396,18 +395,32 @@ app.post('/api/driver/:phone/offline', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/driver/:phone/confirm', async (req, res) => {
+  try {
+    const driver = await DB.drivers.get(req.params.phone);
+    if (!driver) return res.status(404).json({ error: 'Introuvable' });
+    const { driverAccept, driverConfirm } = require('./queue');
+    const offered = await DB.pool.query(
+      `SELECT id FROM rides WHERE driver_phone=$1 AND status='offered' LIMIT 1`, [req.params.phone]
+    );
+    const ok = offered.rows[0] ? await driverConfirm(req.params.phone) : !!(await driverAccept(req.params.phone));
+    res.json({ ok: !!ok });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.post('/api/driver/:phone/refuse', async (req, res) => {
   try {
-    const phone = req.params.phone;
-    const ride  = await DB.rides.getActiveByDriver(phone);
-    if (ride) {
-      await DB.pool.query(`UPDATE rides SET status='searching', driver_phone=NULL WHERE id=$1`, [ride.id]);
-      await DB.drivers.setStatus('online', phone);
-      const { tryNextDriver } = require('./queue');
-      await tryNextDriver(ride.client_phone, ride.id, phone).catch(()=>{});
-    }
+    const { driverReject } = require('./queue');
+    await driverReject(req.params.phone);
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/driver/:phone/finish', async (req, res) => {
+  try {
+    const { driverFinish } = require('./queue');
+    const ok = await driverFinish(req.params.phone);
+    res.json({ ok });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -438,11 +451,7 @@ app.post('/api/driver/respond', async (req, res) => {
 // ─── API CLIENT LOCATE ────────────────────────────────────────
 app.post('/api/locate', async (req, res) => {
   try {
-    let { phone, token, lat, lng } = req.body;
-    if (!phone && token) {
-      const c = await DB.getClientByToken(token);
-      if (c) phone = c.phone;
-    }
+    const { phone, lat, lng } = req.body;
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
@@ -484,11 +493,9 @@ app.post('/api/locate/update', async (req, res) => {
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     await DB.pool.query(
       `UPDATE rides SET client_lat=$1, client_lng=$2
-       WHERE client_phone=$3 AND status IN ('searching','offered','matched','in_progress')`,
+       WHERE client_phone=$3 AND status IN ('searching','offered')`,
       [lat, lng, phone]
     );
-    // Sauvegarder snapshot client pour Trip Engine
-    TripEngine.saveSnapshot(phone, 'client', lat, lng).catch(()=>{});
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -538,34 +545,33 @@ app.delete('/api/blacklist/:phone', async (req, res) => {
 });
 
 // ─── CRON ────────────────────────────────────────────────────
-// Alerte client attend +5 min — répéter toutes les 5 min
+// Cron : relancer si searching sans offre depuis 5 min
 cron.schedule('* * * * *', async () => {
   try {
-    const waiting = await DB.pool.query(`
-      SELECT client_phone, created_at FROM rides
-      WHERE status='searching' AND created_at < NOW() - INTERVAL '5 minutes'
+    const stuck = await DB.pool.query(`
+      SELECT DISTINCT ON (client_phone) id, client_phone, client_lat, client_lng, created_at
+      FROM rides WHERE status='searching' AND created_at < NOW() - INTERVAL '5 minutes'
+      ORDER BY client_phone, created_at DESC
     `);
-    const now = Date.now();
-    for (const row of waiting.rows) {
-      const lastAlert = alertedClients.get(row.client_phone) || 0;
-      // Envoyer seulement si pas alerté depuis 5 min
-      if (now - lastAlert < 5 * 60 * 1000) continue;
-      alertedClients.set(row.client_phone, now);
-      const mins = Math.floor((now - new Date(row.created_at)) / 60000);
+    const { notifyDrivers } = require('./queue');
+    for (const row of stuck.rows) {
+      const key = 'retry_' + row.client_phone;
+      if (alertedClients.has(key)) continue;
+      alertedClients.set(key, Date.now());
+      const mins = Math.floor((Date.now() - new Date(row.created_at)) / 60000);
       await sendText(row.client_phone,
-        `⏳ نأسف للانتظار | Désolé pour l'attente\n` +
-        `_${mins} دقيقة | ${mins} min_\n\n` +
-        `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
+        `⏳ *نأسف للانتظار (${mins} min) | Désolé pour l'attente*\n_نُعيد البحث..._`
       ).catch(()=>{});
+      await notifyDrivers(row.id, row.client_phone, row.client_lat, row.client_lng).catch(()=>{});
     }
-    // Nettoyer les courses terminées
-    for (const [phone] of alertedClients) {
+    for (const [key] of alertedClients) {
+      const ph = key.replace('retry_','');
       const r = await DB.pool.query(
-        `SELECT id FROM rides WHERE client_phone=$1 AND status='searching' LIMIT 1`, [phone]
+        `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [ph]
       );
-      if (r.rows.length === 0) alertedClients.delete(phone);
+      if (!r.rows.length) alertedClients.delete(key);
     }
-  } catch(e) {}
+  } catch(e) { console.error('[CRON RETRY]', e.message); }
 });
 
 // Auto-blacklist spam (toutes les 10 min)
@@ -720,7 +726,6 @@ cron.schedule('0 3 * * *', async () => {
 });
 
 
-// ─── TOKEN ROUTES ─────────────────────────────────────────
 app.get('/api/token/driver/:phone', async (req, res) => {
   try {
     const token = await DB.getOrCreateDriverToken(req.params.phone);
@@ -733,7 +738,11 @@ app.get('/api/driver-by-token/:token', async (req, res) => {
     if (!driver) return res.status(404).json({ error: 'Token invalide' });
     const hasActiveRide = !!(await DB.rides.getActiveByDriver(driver.phone));
     const today = await DB.rides.todayByDriver(driver.phone);
-    res.json({ driver, hasActiveRide, today });
+    const offeredRide = await DB.pool.query(
+      `SELECT id FROM rides WHERE driver_phone=$1 AND status='offered' LIMIT 1`, [driver.phone]
+    );
+    const ridePhase = offeredRide.rows.length ? 'offered' : (hasActiveRide ? 'active' : null);
+    res.json({ driver, hasActiveRide, today, ridePhase });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/client-by-token/:token', async (req, res) => {
@@ -743,25 +752,27 @@ app.get('/api/client-by-token/:token', async (req, res) => {
     res.json({ phone: client.phone, name: client.name });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
-// ─── CSV HISTORIQUE ───────────────────────────────────────
 app.get('/api/history/csv', async (req, res) => {
   try {
     const rows = await DB.rides.getHistory();
-    const header = 'ID,Date,Client,Nom,Chauffeur,Nom chauffeur,Zone,Durée(min),Statut\n';
+    const header = 'ID,Date,Client,Chauffeur,Zone,Durée(min),Statut\n';
     const csv = header + rows.map(r => [
-      r.ride_id||r.id,
-      new Date(r.created_at).toLocaleString('fr-FR'),
-      r.client_phone, r.client_name||'',
-      r.driver_phone||'', r.driver_name||'',
-      r.zone||'', r.duration_min||'', r.status
+      r.ride_id||r.id, new Date(r.created_at).toLocaleString('fr-FR'),
+      r.client_phone, r.driver_phone||'', r.zone||'', r.duration_min||'', r.status
     ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     res.setHeader('Content-Type','text/csv; charset=utf-8');
     res.setHeader('Content-Disposition','attachment; filename="mlk_historique.csv"');
     res.send('\ufeff'+csv);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
+app.get('/api/rides/:id/score', async (req, res) => {
+  try {
+    const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Introuvable' });
+    const { score, details } = await TripEngine.calculateScore(r.rows[0]);
+    res.json({ score, details, status: r.rows[0].status });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 // ─── NETTOYAGE COURSES BLOQUÉES ──────────────────────────────
 app.post('/api/cleanup', async (req, res) => {
   try {
@@ -896,54 +907,6 @@ app.get('/api/driver/:phone/nearby', async (req, res) => {
       .slice(0, 5);
 
     res.json({ clients });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-
-// Score temps réel d'une course
-app.get('/api/rides/:id/score', async (req, res) => {
-  try {
-    const r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [req.params.id]);
-    if (!r.rows[0]) return res.status(404).json({ error: 'Introuvable' });
-    const { score, details } = await TripEngine.calculateScore(r.rows[0]);
-    res.json({ score, details, ride_status: r.rows[0].status, confidence_score: r.rows[0].confidence_score });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-
-// ─── FORCE ASSIGN (admin) ────────────────────────────────
-app.post('/api/rides/:id/force-assign', async (req, res) => {
-  try {
-    const rideId = req.params.id;
-    const { driver_phone } = req.body;
-    
-    const ride = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [rideId]);
-    if (!ride.rows[0]) return res.status(404).json({ error: 'Course introuvable' });
-    const r = ride.rows[0];
-
-    // Trouver le meilleur chauffeur dispo si pas spécifié
-    let dPhone = driver_phone;
-    if (!dPhone) {
-      const nearby = await DB.findNearestDrivers(r.client_lat, r.client_lng, 50);
-      dPhone = nearby[0]?.phone;
-    }
-    if (!dPhone) return res.status(400).json({ error: 'Aucun chauffeur disponible' });
-
-    await DB.pool.query(
-      `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2`,
-      [dPhone, rideId]
-    );
-    await DB.drivers.setStatus('busy', dPhone);
-    await DB.queue.remove(r.client_phone);
-
-    const driver = await DB.drivers.get(dPhone);
-    const cap = `🚕 *Course assignée par admin !*\n👤 ${driver.name}\n📞 wa.me/${dPhone}`;
-    await sendText(r.client_phone, cap).catch(()=>{});
-    await sendText(dPhone,
-      `✅ *Course assignée !*\n📞 wa.me/${r.client_phone}\n\n*1* → Terminer`
-    ).catch(()=>{});
-
-    res.json({ ok: true, driver: driver.name });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
