@@ -58,6 +58,7 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .action-sub{font-size:11px;opacity:.7;color:#fff;margin-top:2px}
 .confirm-btn{background:linear-gradient(135deg,#276749,#48bb78);box-shadow:0 4px 20px rgba(72,187,120,.4)}
 .finish-btn{background:linear-gradient(135deg,#9b2c2c,#e53e3e);box-shadow:0 4px 20px rgba(229,62,62,.3)}
+.refuse-btn{background:linear-gradient(135deg,#744210,#d69e2e);box-shadow:0 4px 20px rgba(214,158,46,.3)}
 .wa-btn-small{display:flex;align-items:center;justify-content:center;gap:8px;background:#25d366;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:500;color:#fff;cursor:pointer;width:100%;text-decoration:none;margin-bottom:8px}
 /* Login */
 .login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;padding:20px}
@@ -148,6 +149,15 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div>
         <div class="action-label">إنهاء الرحلة | Terminer la course</div>
         <div class="action-sub">Tapez aussi *0* sur WhatsApp</div>
+      </div>
+    </button>
+
+    <!-- Bouton REFUSER (visible si course assignée) -->
+    <button class="action-btn refuse-btn" id="refuse-btn" onclick="refuseRide()" style="display:none">
+      <span>❌</span>
+      <div>
+        <div class="action-label">رفض الرحلة | Refuser la course</div>
+        <div class="action-sub">Tapez aussi *2* sur WhatsApp</div>
       </div>
     </button>
 
@@ -276,6 +286,8 @@ function updateUI(hasRide, today, hasNearby) {
 
   // Boutons d'action
   if (finBtn)  finBtn.style.display  = hasRide   ? 'flex' : 'none';
+  const refBtn = document.getElementById('refuse-btn');
+  if (refBtn)  refBtn.style.display  = hasRide   ? 'flex' : 'none';
   if (confBtn) confBtn.style.display = (!hasRide && isOnline && hasNearby) ? 'flex' : 'none';
 
   if (hasRide) {
@@ -454,6 +466,17 @@ async function confirmRide() {
     // Appel WhatsApp avec "1" pré-rempli
     window.open('https://wa.me/22241028510?text=1', '_blank');
   } finally { btn.style.opacity = '1'; setTimeout(loadStatus, 2000); }
+}
+
+async function refuseRide() {
+  const btn = document.getElementById('refuse-btn');
+  if (btn) btn.style.opacity = '.5';
+  try {
+    await fetch(`${BASE}/api/driver/${driverPhone}/refuse`, { method:'POST' });
+    isOnline = true;
+    updateUI(false, undefined, false);
+    setTimeout(loadStatus, 1500);
+  } finally { if (btn) btn.style.opacity = '1'; }
 }
 
 async function finishRide() {
