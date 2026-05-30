@@ -36,19 +36,19 @@ async function handleClient(msg, phone, pushName=null) {
     const chosen = sel.drivers[idx];
 
     // Marquer ce chauffeur comme "essayé" pour cette session
-    const tried = sel.triedPhones || [];
+    const tried = sel.tried_phones ? JSON.parse(sel.tried_phones) : [];
     tried.push(chosen.phone);
 
     // AUTO-ASSIGNATION immédiate
     await DB.pool.query(
       `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2`,
-      [chosen.phone, sel.rideId]
+      [chosen.phone, sel.ride_id]
     );
     await DB.drivers.setStatus('busy', chosen.phone);
     await DB.queue.remove(phone);
 
     // Garder sélection en DB avec liste des essayés
-    await DB.clientSelections.set(phone, sel.rideId, sel.drivers, sel.lat, sel.lng);
+    await DB.clientSelections.set(phone, sel.ride_id, sel.drivers, sel.lat, sel.lng);
     await DB.pool.query(
       `UPDATE client_selections SET tried_phones=$1 WHERE client_phone=$2`,
       [JSON.stringify(tried), phone]
@@ -78,7 +78,7 @@ async function handleClient(msg, phone, pushName=null) {
   // ── Client envoie un autre message avec course en cours → nouvelle liste ──
   if (sel) {
     // Re-envoyer la liste sans les chauffeurs déjà essayés
-    const tried = sel.triedPhones || [];
+    const tried = sel.tried_phones ? JSON.parse(sel.tried_phones) : [];
     if (tried.length > 0 && sel.drivers.length > tried.length) {
       const remaining = sel.drivers.filter(d => !tried.includes(d.phone));
       if (remaining.length > 0) {
