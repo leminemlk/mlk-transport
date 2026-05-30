@@ -216,18 +216,17 @@ ${clim}
     // Calculer score
     const { score, details } = await calculateScore(ride);
 
-    // Mettre à jour near_since si < 80m pour la 1ère fois
-    if (details.distM !== null && details.distM < 80 && !ride.near_since) {
-      await DB.pool.query(`UPDATE rides SET near_since=NOW() WHERE id=$1`, [ride.id]);
-    } else if (details.distM !== null && details.distM >= 150 && ride.near_since) {
-      // Se sont éloignés → reset near_since
-      await DB.pool.query(`UPDATE rides SET near_since=NULL WHERE id=$1`, [ride.id]);
-    }
-
-    // Sauvegarder score en DB
-    await DB.pool.query(
-      `UPDATE rides SET confidence_score=$1 WHERE id=$2`, [score, ride.id]
-    );
+    // Sauvegarder score en DB (ignorer erreur si colonne manquante)
+    try {
+      await DB.pool.query(`UPDATE rides SET confidence_score=$1 WHERE id=$2`, [score, ride.id]);
+    } catch(e) {}
+    try {
+      if (details.distM !== null && details.distM < 80) {
+        await DB.pool.query(`UPDATE rides SET near_since=COALESCE(near_since, NOW()) WHERE id=$1`, [ride.id]);
+      } else if (details.distM !== null && details.distM >= 150) {
+        await DB.pool.query(`UPDATE rides SET near_since=NULL WHERE id=$1`, [ride.id]);
+      }
+    } catch(e) {}
 
     console.log(`[TRIP ENGINE] Ride ${ride.id} | Score: ${score}/100 | Dist: ${details.distM}m | Prox:${details.prox} Time:${details.time} Move:${details.move}`);
 
@@ -243,18 +242,19 @@ ${clim}
     // ── DÉTECTER FIN DE COURSE (séparation après IN_PROGRESS) ─
     if (ride.status === 'in_progress' && details.distM !== null && details.distM > SEPARATION_DIST) {
       // Vérifier que la séparation dure depuis > 30s (éviter faux positifs)
-      const separatedSince = await DB.pool.query(
-        `SELECT separated_since FROM rides WHERE id=$1`, [ride.id]
-      );
-      const sep = separatedSince.rows[0]?.separated_since;
+      let sep = null;
+      try {
+        const separatedSince = await DB.pool.query(`SELECT separated_since FROM rides WHERE id=$1`, [ride.id]);
+        sep = separatedSince.rows[0]?.separated_since;
+      } catch(e) {}
       if (sep && (Date.now() - new Date(sep)) > 30000) {
         await endRide(ride, 'auto');
       } else if (!sep) {
-        await DB.pool.query(`UPDATE rides SET separated_since=NOW() WHERE id=$1`, [ride.id]);
+        try { await DB.pool.query(`UPDATE rides SET separated_since=NOW() WHERE id=$1`, [ride.id]); } catch(e) {}
       }
     } else if (ride.status === 'in_progress') {
       // Toujours ensemble → reset separated_since
-      await DB.pool.query(`UPDATE rides SET separated_since=NULL WHERE id=$1`, [ride.id]);
+      try { await DB.pool.query(`UPDATE rides SET separated_since=NULL WHERE id=$1`, [ride.id]); } catch(e) {}
     }
 
   } catch(e) { console.error('[TRIP ENGINE CHECK]', e.message); }
