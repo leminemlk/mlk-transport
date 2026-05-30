@@ -6,23 +6,25 @@
 <title>MK TAXI</title>
 <meta name="theme-color" content="#f6c90e">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
-.logo{font-size:52px;margin-bottom:8px;text-align:center}
-.brand{font-size:22px;font-weight:700;color:#0d1117;text-align:center;margin-bottom:4px}
-.tagline{font-size:13px;color:#718096;margin-bottom:32px;text-align:center}
-.status-box{width:100%;max-width:360px;border-radius:16px;padding:18px 20px;text-align:center;margin-bottom:16px;transition:all .3s}
-.status-box.idle{background:#f8fafc;border:1px solid #e2e8f0}
-.status-box.locating{background:#eff6ff;border:1px solid #bfdbfe}
-.status-box.searching{background:#f0fdf4;border:1px solid #bbf7d0}
-.status-box.found{background:#f0fdf4;border:1px solid #22c55e}
-.status-box.error{background:#fff1f2;border:1px solid #fecdd3}
-.status-icon{font-size:28px;margin-bottom:6px}
-.status-text{font-size:15px;font-weight:600;color:#0d1117}
-.status-sub{font-size:12px;color:#718096;margin-top:4px}
-.progress-bar{width:100%;max-width:360px;height:4px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:32px}
-.progress-fill{height:100%;background:#f6c90e;border-radius:4px;transition:width .5s;width:0%}
-.cancel-btn{background:transparent;border:1px solid #e2e8f0;border-radius:12px;padding:11px 28px;font-size:13px;color:#718096;cursor:pointer;margin-top:8px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+     min-height:100vh;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;padding:24px;text-align:center}
+.logo{font-size:52px;margin-bottom:8px}
+.brand{font-size:22px;font-weight:700;color:#0d1117;margin-bottom:4px}
+.tagline{font-size:13px;color:#718096;margin-bottom:32px}
+.box{width:100%;max-width:360px;border-radius:16px;padding:20px;margin-bottom:16px;transition:all .3s}
+.box.idle    {background:#f8fafc;border:1px solid #e2e8f0}
+.box.loading {background:#eff6ff;border:1px solid #bfdbfe}
+.box.ok      {background:#f0fdf4;border:1px solid #bbf7d0}
+.box.error   {background:#fff1f2;border:1px solid #fecdd3}
+.box-icon{font-size:28px;margin-bottom:6px}
+.box-text{font-size:15px;font-weight:600;color:#0d1117}
+.box-sub {font-size:12px;color:#718096;margin-top:4px}
+.bar-wrap{width:100%;max-width:360px;height:4px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:20px}
+.bar{height:100%;background:#f6c90e;border-radius:4px;transition:width .5s;width:0}
+.cancel{background:transparent;border:1px solid #e2e8f0;border-radius:12px;
+        padding:10px 28px;font-size:13px;color:#718096;cursor:pointer;display:none}
 </style>
 </head>
 <body>
@@ -30,112 +32,145 @@ body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',san
 <div class="brand">MK TAXI</div>
 <div class="tagline">نقلك في دقيقة · Votre taxi en 1 minute</div>
 
-<div class="status-box idle" id="status-box">
-  <div class="status-icon" id="status-icon">📍</div>
-  <div class="status-text" id="status-text">تحديد موقعك | Localisation...</div>
-  <div class="status-sub"  id="status-sub">يرجى الانتظار | Veuillez patienter</div>
+<div class="box idle" id="box">
+  <div class="box-icon" id="icon">📍</div>
+  <div class="box-text" id="txt">تحديد موقعك | Localisation...</div>
+  <div class="box-sub"  id="sub">يرجى الانتظار | Veuillez patienter</div>
 </div>
-<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
-<button class="cancel-btn" id="cancel-btn" style="display:none" onclick="doCancel()">❌ إلغاء | Annuler</button>
+<div class="bar-wrap"><div class="bar" id="bar"></div></div>
+<button class="cancel" id="cancel-btn" onclick="doCancel()">❌ إلغاء | Annuler</button>
 
 <script>
 const BASE = 'https://mlk-transport-production.up.railway.app';
-const token = new URLSearchParams(location.search).get('t') || '';
-let phone = '';
-let watchId = null;
-let keepAlive = null;
-let submitted = false;
+const params = new URLSearchParams(location.search);
+const token  = params.get('t') || '';
+let phone    = '';
+let watchId  = null;
+let keepAlive= null;
+let submitted= false;
 
-function setStatus(cls, icon, text, sub) {
-  document.getElementById('status-box').className = 'status-box ' + cls;
-  document.getElementById('status-icon').textContent = icon;
-  document.getElementById('status-text').textContent = text;
-  document.getElementById('status-sub').textContent  = sub || '';
+function ui(cls, icon, txt, sub) {
+  document.getElementById('box').className = 'box ' + cls;
+  document.getElementById('icon').textContent = icon;
+  document.getElementById('txt').textContent  = txt;
+  document.getElementById('sub').textContent  = sub || '';
 }
-function setProgress(p) { document.getElementById('progress').style.width = p + '%'; }
+function bar(p) { document.getElementById('bar').style.width = p + '%'; }
+function showCancel() { document.getElementById('cancel-btn').style.display = 'inline-block'; }
 
 async function init() {
-  if (token) {
-    try {
-      const r = await fetch(`${BASE}/api/client-by-token/${token}`);
-      if (r.ok) { const d=await r.json(); phone=d.phone; }
-      else { setStatus('error','🔒','Lien invalide | Lien expiré','Demandez un nouveau lien via WhatsApp'); return; }
-    } catch(e){ setStatus('error','⚠️','Erreur réseau','Vérifiez votre connexion'); return; }
-  } else {
-    setStatus('error','⚠️','Lien manquant | Lien incomplet','Utilisez le lien reçu sur WhatsApp'); return;
+  // Vérifier token
+  if (!token) {
+    ui('error','⚠️','Lien invalide | رابط غير صالح','Demandez un nouveau lien via WhatsApp');
+    return;
   }
-  setProgress(20);
-  setStatus('locating','📡','تحديد موقعك | Localisation en cours...','الرجاء السماح بالوصول | Autorisez la localisation');
-  navigator.geolocation.getCurrentPosition(onGPS, onGPSErr, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+  try {
+    const r = await fetch(`${BASE}/api/client-by-token/${token}`);
+    if (!r.ok) throw new Error('Token invalide');
+    const data = await r.json();
+    phone = data.phone;
+  } catch(e) {
+    ui('error','🔒','Lien expiré | رابط منتهي الصلاحية','Envoyez un message à MK TAXI pour un nouveau lien');
+    return;
+  }
+
+  // Demander GPS
+  if (!navigator.geolocation) {
+    ui('error','⚠️','GPS non disponible','Activez la localisation sur votre appareil');
+    return;
+  }
+  bar(20);
+  ui('loading','📡','تحديد موقعك | Localisation en cours...','الرجاء السماح بالوصول | Autorisez la localisation');
+
+  navigator.geolocation.getCurrentPosition(onGPS, onGPSErr,
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+  );
 }
 
 async function onGPS(pos) {
-  const { latitude:lat, longitude:lng } = pos.coords;
-  setProgress(60);
-  setStatus('searching','🔍','جاري البحث عن سائق | Recherche d\'un chauffeur...','يرجى الانتظار | Un instant...');
-  document.getElementById('cancel-btn').style.display = 'block';
+  const { latitude: lat, longitude: lng } = pos.coords;
+  bar(60);
+  ui('loading','🔍','جاري البحث عن سائق | Recherche d\'un chauffeur...','Un instant...');
+  showCancel();
 
   try {
-    const body = token ? { token, lat, lng } : { phone, lat, lng };
     const r = await fetch(`${BASE}/api/locate`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, lat, lng })
     });
     const d = await r.json();
-    if (d.ok) {
+    if (r.ok && d.ok !== false) {
       submitted = true;
-      setProgress(100);
-      setStatus('found','✅','طلبك قيد المعالجة !','ستتلقى رسالة واتساب قريباً\nVous recevrez un message WhatsApp');
-      // GPS continu
-      watchId = navigator.geolocation.watchPosition(
-        p => updatePos(p.coords.latitude, p.coords.longitude), ()=>{},
-        { enableHighAccuracy:true, maximumAge:5000 }
-      );
-      keepAlive = setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
-          p => updatePos(p.coords.latitude, p.coords.longitude), ()=>{},
-          { enableHighAccuracy:true, maximumAge:10000 }
-        );
-      }, 30000);
+      bar(100);
+      ui('ok','✅','طلبك قيد المعالجة !','ستتلقى رسالة واتساب قريباً\nVous recevrez un message WhatsApp');
+      startTracking(lat, lng);
     } else {
-      setStatus('error','⚠️','خطأ | Erreur','Réessayez');
+      ui('error','⚠️', d.error || 'Erreur','Réessayez');
     }
   } catch(e) {
-    setStatus('error','⚠️','خطأ في الاتصال | Erreur réseau','Vérifiez votre connexion');
+    ui('error','⚠️','خطأ في الاتصال | Erreur réseau','Vérifiez votre connexion et réessayez');
   }
+}
+
+function startTracking(initLat, initLng) {
+  watchId = navigator.geolocation.watchPosition(
+    p => updatePos(p.coords.latitude, p.coords.longitude), () => {},
+    { enableHighAccuracy: true, maximumAge: 5000 }
+  );
+  keepAlive = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(
+      p => updatePos(p.coords.latitude, p.coords.longitude), () => {},
+      { enableHighAccuracy: true, maximumAge: 15000 }
+    );
+  }, 30000);
 }
 
 async function updatePos(lat, lng) {
-  if (!submitted || (!phone && !token)) return;
+  if (!submitted) return;
   try {
-    const body = token ? { token, lat, lng } : { phone, lat, lng };
     await fetch(`${BASE}/api/locate/update`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, lat, lng })
     });
-  } catch(e){}
+  } catch(e) {}
 }
 
-function onGPSErr() {
-  setStatus('error','⚠️','يرجى السماح بالوصول للموقع | Autorisez la localisation','Paramètres → Autoriser la localisation');
+function onGPSErr(err) {
+  const msgs = {
+    1: 'يرجى السماح بالوصول للموقع | Autorisez la localisation dans les paramètres',
+    2: 'GPS غير متاح | Signal GPS indisponible',
+    3: 'انتهت مهلة GPS | GPS timeout — réessayez'
+  };
+  ui('error','⚠️','لا يمكن تحديد موقعك | Localisation impossible', msgs[err.code] || 'Réessayez');
 }
 
 async function doCancel() {
-  if (watchId) { navigator.geolocation.clearWatch(watchId); watchId=null; }
-  if (keepAlive) { clearInterval(keepAlive); keepAlive=null; }
-  if (phone || token) {
-    const body = token ? { token } : { phone };
-    await fetch(`${BASE}/api/locate/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).catch(()=>{});
-  }
-  setStatus('idle','📍','تم الإلغاء | Annulé','');
-  document.getElementById('cancel-btn').style.display='none';
-  setProgress(0);
-  submitted=false;
+  stopTracking();
+  try {
+    await fetch(`${BASE}/api/locate/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+  } catch(e) {}
+  ui('idle','📍','تم الإلغاء | Annulé','');
+  bar(0);
+  submitted = false;
+  document.getElementById('cancel-btn').style.display = 'none';
 }
 
-document.addEventListener('visibilitychange', ()=>{
-  if (document.visibilityState==='visible' && submitted) {
+function stopTracking() {
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (keepAlive) { clearInterval(keepAlive); keepAlive = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && submitted) {
     navigator.geolocation.getCurrentPosition(
-      p => updatePos(p.coords.latitude, p.coords.longitude), ()=>{},
-      { enableHighAccuracy:true, maximumAge:0 }
+      p => updatePos(p.coords.latitude, p.coords.longitude), () => {},
+      { enableHighAccuracy: true, maximumAge: 0 }
     );
   }
 });
