@@ -153,6 +153,36 @@ async function calculateScore(ride) {
   }
 }
 
+
+// ─── AUTO-ASSIGNATION ────────────────────────────────────────
+async function autoAssign(driverPhone, clientPhone, rideId, distM, lat, lng) {
+  try {
+    await DB.pool.query(
+      `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2 AND status='searching'`,
+      [driverPhone, rideId]
+    );
+    await DB.drivers.setStatus('busy', driverPhone);
+    await DB.queue.remove(clientPhone);
+    await DB.clientSelections.delete(clientPhone);
+
+    const driver = await DB.drivers.get(driverPhone);
+    const clim   = driver?.clim ? '❄️' : '🌡';
+    const distTxt = distM < 1000 ? `${Math.round(distM)}m` : `${(distM/1000).toFixed(1)}km`;
+    const cap = `🚕 *تم تأكيد الرحلة ! | Course confirmée !*\n\n👤 *${driver?.name}*\n📞 wa.me/${driverPhone}\n${clim}\n📍 ${distTxt}`;
+
+    if (driver?.photo_ext) {
+      try { await (require('./whapi')).sendImage(clientPhone, driver.photo_ext, cap); }
+      catch(e) { await sendText(clientPhone, cap); }
+    } else { await sendText(clientPhone, cap); }
+
+    await sendText(driverPhone,
+      `✅ *تم تعيين الرحلة تلقائياً ! | Course auto-assignée !*\n📞 wa.me/${clientPhone}\n📍 ${distTxt}\n\n*1* → ✅ Terminer`
+    ).catch(()=>{});
+
+    console.log(`[TRIP ENGINE] ✅ Auto-assign ride ${rideId} → ${driverPhone} | client ${clientPhone} | ${distTxt}`);
+  } catch(e) { console.error('[AUTO-ASSIGN]', e.message); }
+}
+
 // ─── VÉRIFICATION PRINCIPALE (appelée à chaque GPS update) ──
 async function checkRide(driverPhone, lat, lng) {
   try {
