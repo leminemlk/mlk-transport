@@ -59,6 +59,17 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .confirm-btn{background:linear-gradient(135deg,#276749,#48bb78);box-shadow:0 4px 20px rgba(72,187,120,.4)}
 .finish-btn{background:linear-gradient(135deg,#9b2c2c,#e53e3e);box-shadow:0 4px 20px rgba(229,62,62,.3)}
 .refuse-btn{background:linear-gradient(135deg,#744210,#d69e2e);box-shadow:0 4px 20px rgba(214,158,46,.3)}
+.ride-panel-title{font-size:14px;font-weight:600;color:#f6c90e;margin-bottom:4px;text-align:center}
+.ride-panel-sub{font-size:11px;color:#718096;margin-bottom:14px;text-align:center}
+.btn-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.grid-btn{border:none;border-radius:14px;padding:14px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:transform .1s,opacity .1s}
+.grid-btn:active{transform:scale(.95);opacity:.8}
+.btn-icon{font-size:26px}
+.btn-lbl{font-size:13px;font-weight:600;color:#fff}
+.btn-sub{font-size:10px;color:rgba(255,255,255,.6)}
+.btn-confirm{background:linear-gradient(135deg,#276749,#48bb78);box-shadow:0 4px 16px rgba(72,187,120,.35)}
+.btn-reject{background:linear-gradient(135deg,#744210,#d69e2e);box-shadow:0 4px 16px rgba(214,158,46,.35)}
+.btn-finish{background:linear-gradient(135deg,#9b2c2c,#e53e3e);box-shadow:0 4px 16px rgba(229,62,62,.25)}
 .wa-btn-small{display:flex;align-items:center;justify-content:center;gap:8px;background:#25d366;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:500;color:#fff;cursor:pointer;width:100%;text-decoration:none;margin-bottom:8px}
 /* Login */
 .login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;padding:20px}
@@ -134,38 +145,32 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div id="nearby-list"><div class="nearby-empty">Aucun client à proximité</div></div>
     </div>
 
-    <!-- Bouton CONFIRMER (visible si client dans zone) -->
-    <button class="action-btn confirm-btn" id="confirm-btn" onclick="confirmRide()" style="display:none">
-      <span>✅</span>
-      <div>
-        <div class="action-label">أنا مع العميل | Je suis avec le client</div>
-        <div class="action-sub">Tapez aussi *1* sur WhatsApp</div>
+    <!-- PANNEAU COURSE : affiché selon le contexte -->
+    <div id="ride-panel" style="display:none">
+      <div class="ride-panel-title" id="panel-title">🔔 Client dans votre zone</div>
+      <div class="ride-panel-sub" id="panel-sub">Contactez le client et confirmez le prix</div>
+      <div class="btn-grid">
+        <button class="grid-btn btn-confirm" id="btn-confirm" onclick="confirmRide()">
+          <div class="btn-icon">✅</div>
+          <div class="btn-lbl">تأكيد</div>
+          <div class="btn-sub">Confirmer · *1*</div>
+        </button>
+        <button class="grid-btn btn-reject" id="btn-reject" onclick="rejectRide()">
+          <div class="btn-icon">❌</div>
+          <div class="btn-lbl">رفض</div>
+          <div class="btn-sub">Rejeter · *2*</div>
+        </button>
+        <button class="grid-btn btn-finish" id="btn-finish" onclick="finishRide()">
+          <div class="btn-icon">🏁</div>
+          <div class="btn-lbl">إنهاء</div>
+          <div class="btn-sub">Terminer · *0*</div>
+        </button>
       </div>
-    </button>
+    </div>
 
-    <!-- Bouton TERMINER (visible si course active) -->
-    <button class="action-btn finish-btn" id="finish-btn" onclick="finishRide()" style="display:none">
-      <span>🏁</span>
-      <div>
-        <div class="action-label">إنهاء الرحلة | Terminer la course</div>
-        <div class="action-sub">Tapez aussi *0* sur WhatsApp</div>
-      </div>
-    </button>
-
-    <!-- Bouton REFUSER (visible si course assignée) -->
-    <button class="action-btn refuse-btn" id="refuse-btn" onclick="refuseRide()" style="display:none">
-      <span>❌</span>
-      <div>
-        <div class="action-label">رفض الرحلة | Refuser la course</div>
-        <div class="action-sub">Tapez aussi *2* sur WhatsApp</div>
-      </div>
-    </button>
-
-    <!-- WhatsApp backup -->
     <a id="wa-link" class="wa-btn-small" href="https://wa.me/22241028510" target="_blank">
       💬 WhatsApp MK TAXI
     </a>
-
     <button class="logout-btn" onclick="doLogout()">← Déconnexion | سجيل خروج</button>
   </div>
 </div>
@@ -468,11 +473,12 @@ async function confirmRide() {
   } finally { btn.style.opacity = '1'; setTimeout(loadStatus, 2000); }
 }
 
-async function refuseRide() {
+async function rejectRide() {
   const btn = document.getElementById('refuse-btn');
   if (btn) btn.style.opacity = '.5';
   try {
     await fetch(`${BASE}/api/driver/${driverPhone}/refuse`, { method:'POST' });
+    updateUI(false, undefined, false);
     isOnline = true;
     updateUI(false, undefined, false);
     setTimeout(loadStatus, 1500);
