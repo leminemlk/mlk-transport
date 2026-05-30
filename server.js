@@ -396,6 +396,21 @@ app.post('/api/driver/:phone/offline', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+app.post('/api/driver/:phone/refuse', async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const ride  = await DB.rides.getActiveByDriver(phone);
+    if (ride) {
+      await DB.pool.query(`UPDATE rides SET status='searching', driver_phone=NULL WHERE id=$1`, [ride.id]);
+      await DB.drivers.setStatus('online', phone);
+      const { tryNextDriver } = require('./queue');
+      await tryNextDriver(ride.client_phone, ride.id, phone).catch(()=>{});
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/driver/:phone/finish', async (req, res) => {
   try {
     const phone = req.params.phone;

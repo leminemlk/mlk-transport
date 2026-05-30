@@ -157,4 +157,87 @@ async function processQueue(driver) {
   }
 }
 
-module.exports = { getState, setState, clearState, offerRide, findDriver, retryNextDriver, acceptRide, refuseRide, processQueue };
+
+// ─── CHERCHER PROCHAIN CHAUFFEUR ─────────────────────────────
+async function tryNextDriver(clientPhone, rideId, refusedPhone = null) {
+  try {
+    const ride = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [rideId]);
+    if (!ride.rows[0]) return;
+    const r = ride.rows[0];
+
+    // Construire liste des chauffeurs déjà essayés
+    const sel = await DB.clientSelections.get(clientPhone);
+    const tried = new Set(sel?.tried_phones ? JSON.parse(sel.tried_phones) : []);
+    if (refusedPhone) tried.add(refusedPhone);
+
+    const radius  = await DB.getRadius();
+    const busyQ   = await DB.pool.query(`SELECT driver_phone FROM rides WHERE status='assigned' AND driver_phone IS NOT NULL`);
+    const busy    = new Set(busyQ.rows.map(r => r.driver_phone));
+
+    const nearby = (await DB.findNearestDrivers(r.client_lat, r.client_lng, radius))
+      .filter(d => !busy.has(d.phone) && !tried.has(d.phone))
+      .slice(0,3)
+      .map(d => ({ ...d, distKm: d.dist.toFixed(1) }));
+
+    if (nearby.length > 0) {
+      // Envoyer nouvelle liste au client
+      await sendText(clientPhone,
+        `🔄 *بحث عن سائق جديد | Nouveau chauffeur trouvé :*
+` +
+        `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
+      );
+      for (let i=0; i<nearby.length; i++) {
+        const d = nearby[i];
+        const eta = DB.estimateMinutes(parseFloat(d.distKm));
+        const cap = `*${i+1}. ${d.name}*
+📍 ${d.distKm} km · ⏱️ ${eta} min
+${d.clim?'❄️':'🌡'}
+📞 *wa.me/${d.phone}*`;
+        if (d.photo_ext) {
+          try { await sendImage(clientPhone, d.photo_ext, cap); } catch(e) { await sendText(clientPhone, cap); }
+        } else { await sendText(clientPhone, cap); }
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // MAJ tried_phones
+      nearby.forEach(d => tried.add(d.phone));
+      if (sel) {
+        await DB.pool.query(
+          `UPDATE client_selections SET tried_phones=$1, drivers_json=$2 WHERE client_phone=$3`,
+          [JSON.stringify([...tried]),
+           JSON.stringify([...(sel.drivers||[]), ...nearby]),
+           clientPhone]
+        );
+      } else {
+        await DB.clientSelections.set(clientPhone, rideId, nearby, r.client_lat, r.client_lng);
+        await DB.pool.query(
+          `UPDATE client_selections SET tried_phones=$1 WHERE client_phone=$2`,
+          [JSON.stringify([...tried]), clientPhone]
+        );
+      }
+
+      // Notifier les nouveaux chauffeurs
+      for (const d of nearby) {
+        await sendText(d.phone,
+          `🔔 *عميل قريب | Client proche*
+📍 ${d.distKm} km
+_Si le client vous contacte, confirmez avec *1*_`
+        ).catch(()=>{});
+        await new Promise(r => setTimeout(r, 300));
+      }
+    } else {
+      // Aucun chauffeur dispo → message d'attente
+      const mins = Math.floor((Date.now() - new Date(r.created_at))/60000);
+      await sendText(clientPhone,
+        `⏳ *نأسف للانتظار (${mins} min) | Désolé pour l'attente*
+` +
+        `_لا يوجد سائق آخر متاح الآن | Aucun autre chauffeur disponible_
+
+` +
+        `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
+      ).catch(()=>{});
+    }
+  } catch(e) { console.error('[TRY NEXT DRIVER]', e.message); }
+}
+
+module.exports = { getState, setState, clearState, offerRide, findDriver, retryNextDriver, acceptRide, refuseRide, processQueue, tryNextDriver };
