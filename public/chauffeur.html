@@ -145,25 +145,34 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div id="nearby-list"><div class="nearby-empty">Aucun client à proximité</div></div>
     </div>
 
-    <!-- PANNEAU COURSE : affiché selon le contexte -->
+    <!-- PANNEAU COURSE -->
     <div id="ride-panel" style="display:none">
       <div class="ride-panel-title" id="panel-title">🔔 Client dans votre zone</div>
-      <div class="ride-panel-sub" id="panel-sub">Contactez le client et confirmez le prix</div>
-      <div class="btn-grid">
-        <button class="grid-btn btn-confirm" id="btn-confirm" onclick="confirmRide()">
+      <div class="ride-panel-sub" id="panel-sub"></div>
+      <div class="btn-grid" id="btn-grid">
+        <!-- Bouton ACCEPTER (phase 1 : client dans zone) -->
+        <button class="grid-btn btn-accept" id="btn-accept" onclick="doAccept()" style="display:none">
           <div class="btn-icon">✅</div>
-          <div class="btn-lbl">تأكيد</div>
-          <div class="btn-sub">Confirmer · *1*</div>
+          <div class="btn-lbl">قبول</div>
+          <div class="btn-sub">Accepter · *1*</div>
         </button>
-        <button class="grid-btn btn-reject" id="btn-reject" onclick="rejectRide()">
+        <!-- Bouton CONFIRMER (phase 2 : après négociation) -->
+        <button class="grid-btn btn-confirm" id="btn-confirm" onclick="doConfirm()" style="display:none">
+          <div class="btn-icon">🤝</div>
+          <div class="btn-lbl">تأكيد</div>
+          <div class="btn-sub">Confirmer · *2*</div>
+        </button>
+        <!-- Bouton REJETER -->
+        <button class="grid-btn btn-reject" id="btn-reject" onclick="doReject()" style="display:none">
           <div class="btn-icon">❌</div>
           <div class="btn-lbl">رفض</div>
-          <div class="btn-sub">Rejeter · *2*</div>
+          <div class="btn-sub">Rejeter · *0*</div>
         </button>
-        <button class="grid-btn btn-finish" id="btn-finish" onclick="finishRide()">
+        <!-- Bouton TERMINER (phase 3 : course en cours) -->
+        <button class="grid-btn btn-finish" id="btn-finish" onclick="doFinish()" style="display:none">
           <div class="btn-icon">🏁</div>
           <div class="btn-lbl">إنهاء</div>
-          <div class="btn-sub">Terminer · *0*</div>
+          <div class="btn-sub">Terminer · *3*</div>
         </button>
       </div>
     </div>
@@ -183,6 +192,7 @@ let isOnline    = false;
 let pingInterval= null;
 let gpsWatchId  = null;
 let lastLat = 0, lastLng = 0;
+let ridePhase = null;
 let gpsInterval = null;
 let bgInterval  = null;
 let wakeLock    = null;
@@ -279,7 +289,8 @@ function showDashboard(data) {
 }
 
 // ─── UI ─────────────────────────────────────────────────────
-function updateUI(hasRide, today, hasNearby) {
+function updateUI(hasRide, today, hasNearby, phase) {
+  if (phase !== undefined) ridePhase = phase;
   const sw      = document.getElementById('toggle-sw');
   const label   = document.getElementById('t-label');
   const sub     = document.getElementById('t-sub');
@@ -461,16 +472,27 @@ async function loadNearby() {
 }
 
 async function confirmRide() {
-  const btn = document.getElementById('confirm-btn');
-  btn.style.opacity = '.5';
+  const btn = document.getElementById('btn-confirm');
+  if (btn) btn.style.opacity = '.5';
   try {
-    await fetch(`${BASE}/api/driver/location`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phone: driverPhone, lat: lastLat, lng: lastLng, confirm: true })
+    // Appel direct API confirm
+    const r = await fetch(`${BASE}/api/driver/${driverPhone}/confirm`, {
+      method:'POST', headers:{'Content-Type':'application/json'}
     });
-    // Appel WhatsApp avec "1" pré-rempli
+    const d = await r.json();
+    if (d.ok) {
+      updateUI(true, undefined, false);
+      setTimeout(loadStatus, 1500);
+    } else {
+      // Fallback: ouvrir WhatsApp avec "1"
+      window.open('https://wa.me/22241028510?text=1', '_blank');
+      setTimeout(loadStatus, 3000);
+    }
+  } catch(e) {
     window.open('https://wa.me/22241028510?text=1', '_blank');
-  } finally { btn.style.opacity = '1'; setTimeout(loadStatus, 2000); }
+  } finally {
+    if (btn) btn.style.opacity = '1';
+  }
 }
 
 async function rejectRide() {
