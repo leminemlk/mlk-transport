@@ -895,6 +895,43 @@ app.get('/api/rides/:id/score', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ─── FORCE ASSIGN (admin) ────────────────────────────────
+app.post('/api/rides/:id/force-assign', async (req, res) => {
+  try {
+    const rideId = req.params.id;
+    const { driver_phone } = req.body;
+    
+    const ride = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [rideId]);
+    if (!ride.rows[0]) return res.status(404).json({ error: 'Course introuvable' });
+    const r = ride.rows[0];
+
+    // Trouver le meilleur chauffeur dispo si pas spécifié
+    let dPhone = driver_phone;
+    if (!dPhone) {
+      const nearby = await DB.findNearestDrivers(r.client_lat, r.client_lng, 50);
+      dPhone = nearby[0]?.phone;
+    }
+    if (!dPhone) return res.status(400).json({ error: 'Aucun chauffeur disponible' });
+
+    await DB.pool.query(
+      `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2`,
+      [dPhone, rideId]
+    );
+    await DB.drivers.setStatus('busy', dPhone);
+    await DB.queue.remove(r.client_phone);
+
+    const driver = await DB.drivers.get(dPhone);
+    const cap = `🚕 *Course assignée par admin !*\n👤 ${driver.name}\n📞 wa.me/${dPhone}`;
+    await sendText(r.client_phone, cap).catch(()=>{});
+    await sendText(dPhone,
+      `✅ *Course assignée !*\n📞 wa.me/${r.client_phone}\n\n*1* → Terminer`
+    ).catch(()=>{});
+
+    res.json({ ok: true, driver: driver.name });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── HEALTHCHECK ─────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
