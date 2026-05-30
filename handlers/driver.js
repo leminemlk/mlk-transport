@@ -51,7 +51,9 @@ async function handleDriver(msg, driver) {
       return;
     }
 
-    await sendText(phone, `⚠️ لا توجد رحلة نشطة | Aucune course.\n\n👉 ${driverUrl(token)}`);
+    await sendText(phone, `⚠️ لا توجد رحلة نشطة | Aucune course.
+
+👉 ${driverUrl(token)}`);
     return;
   }
 
