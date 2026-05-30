@@ -52,6 +52,13 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .wa-btn{background:#25d366;border:none;border-radius:14px;padding:14px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;margin-bottom:10px}
 .finish-btn{background:#1a3a2a;border:2px solid #48bb78;border-radius:14px;padding:14px;font-size:14px;font-weight:600;color:#68d391;cursor:pointer;width:100%;display:none}
 .logout-btn{background:transparent;border:none;color:#4a5568;font-size:12px;cursor:pointer;width:100%;padding:8px;margin-top:4px}
+.action-btn{width:100%;border:none;border-radius:16px;padding:16px 20px;display:flex;align-items:center;gap:16px;cursor:pointer;margin-bottom:10px;font-size:28px;text-align:right;transition:transform .1s}
+.action-btn:active{transform:scale(.97)}
+.action-label{font-size:15px;font-weight:600;color:#fff}
+.action-sub{font-size:11px;opacity:.7;color:#fff;margin-top:2px}
+.confirm-btn{background:linear-gradient(135deg,#276749,#48bb78);box-shadow:0 4px 20px rgba(72,187,120,.4)}
+.finish-btn{background:linear-gradient(135deg,#9b2c2c,#e53e3e);box-shadow:0 4px 20px rgba(229,62,62,.3)}
+.wa-btn-small{display:flex;align-items:center;justify-content:center;gap:8px;background:#25d366;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:500;color:#fff;cursor:pointer;width:100%;text-decoration:none;margin-bottom:8px}
 /* Login */
 .login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;padding:20px}
 .login-card{background:#1a1f2e;border-radius:20px;padding:28px;width:100%;max-width:360px;text-align:center}
@@ -126,15 +133,28 @@ body{background:#0d1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div id="nearby-list"><div class="nearby-empty">Aucun client à proximité</div></div>
     </div>
 
-    <!-- WhatsApp -->
-    <a id="wa-link" class="wa-btn" href="#" target="_blank">
-      <span>💬</span> Ouvrir WhatsApp | فتح واتساب
-    </a>
-
-    <!-- Terminer course -->
-    <button class="finish-btn" id="finish-btn" onclick="finishRide()">
-      ✅ Terminer la course | إنهاء الرحلة
+    <!-- Bouton CONFIRMER (visible si client dans zone) -->
+    <button class="action-btn confirm-btn" id="confirm-btn" onclick="confirmRide()" style="display:none">
+      <span>✅</span>
+      <div>
+        <div class="action-label">أنا مع العميل | Je suis avec le client</div>
+        <div class="action-sub">Tapez aussi *1* sur WhatsApp</div>
+      </div>
     </button>
+
+    <!-- Bouton TERMINER (visible si course active) -->
+    <button class="action-btn finish-btn" id="finish-btn" onclick="finishRide()" style="display:none">
+      <span>🏁</span>
+      <div>
+        <div class="action-label">إنهاء الرحلة | Terminer la course</div>
+        <div class="action-sub">Tapez aussi *0* sur WhatsApp</div>
+      </div>
+    </button>
+
+    <!-- WhatsApp backup -->
+    <a id="wa-link" class="wa-btn-small" href="https://wa.me/22241028510" target="_blank">
+      💬 WhatsApp MK TAXI
+    </a>
 
     <button class="logout-btn" onclick="doLogout()">← Déconnexion | سجيل خروج</button>
   </div>
@@ -147,6 +167,7 @@ let driverToken = null;
 let isOnline    = false;
 let pingInterval= null;
 let gpsWatchId  = null;
+let lastLat = 0, lastLng = 0;
 let gpsInterval = null;
 let bgInterval  = null;
 let wakeLock    = null;
@@ -243,32 +264,35 @@ function showDashboard(data) {
 }
 
 // ─── UI ─────────────────────────────────────────────────────
-function updateUI(hasRide, today) {
-  const sw    = document.getElementById('toggle-sw');
-  const label = document.getElementById('t-label');
-  const sub   = document.getElementById('t-sub');
-  const stat  = document.getElementById('stat-status');
-  const rides = document.getElementById('stat-rides');
-  const fin   = document.getElementById('finish-btn');
-  if (today !== undefined) rides.textContent = today;
+function updateUI(hasRide, today, hasNearby) {
+  const sw      = document.getElementById('toggle-sw');
+  const label   = document.getElementById('t-label');
+  const sub     = document.getElementById('t-sub');
+  const stat    = document.getElementById('stat-status');
+  const ridesEl = document.getElementById('stat-rides');
+  const finBtn  = document.getElementById('finish-btn');
+  const confBtn = document.getElementById('confirm-btn');
+  if (today !== undefined) ridesEl.textContent = today;
+
+  // Boutons d'action
+  if (finBtn)  finBtn.style.display  = hasRide   ? 'flex' : 'none';
+  if (confBtn) confBtn.style.display = (!hasRide && isOnline && hasNearby) ? 'flex' : 'none';
+
   if (hasRide) {
     sw.className = 'toggle-sw busy';
     label.textContent = 'رحلة جارية | En course';
-    sub.textContent   = 'Tapez *1* sur WhatsApp pour terminer';
+    sub.textContent   = '*0* WhatsApp → 🏁 Terminer';
     stat.textContent  = '🟡';
-    fin.style.display = 'block';
   } else if (isOnline) {
     sw.className = 'toggle-sw on';
     label.textContent = 'متاح | Disponible';
-    sub.textContent   = 'GPS actif — En attente de courses';
+    sub.textContent   = '*1* WhatsApp → ✅ Confirmer';
     stat.textContent  = '🟢';
-    fin.style.display = 'none';
   } else {
     sw.className = 'toggle-sw off';
     label.textContent = 'غير متاح | Hors ligne';
     sub.textContent   = 'Appuyez pour vous mettre en ligne';
     stat.textContent  = '🔴';
-    fin.style.display = 'none';
   }
 }
 
@@ -325,6 +349,7 @@ function stopGPS() {
 async function sendGPS(lat, lng) {
   if (!driverPhone) return;
   try {
+    lastLat = lat; lastLng = lng;
     const r = await fetch(`${BASE}/api/driver/location`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ phone: driverPhone, lat, lng })
@@ -405,6 +430,8 @@ async function loadNearby() {
       return;
     }
     badge.textContent = d.clients.length;
+    // Afficher bouton confirmer si client proche
+    updateUI(false, undefined, d.clients.length > 0);
     list.innerHTML = d.clients.map(c=>`
       <div class="nearby-row">
         <div>
@@ -416,12 +443,28 @@ async function loadNearby() {
   } catch(e){}
 }
 
+async function confirmRide() {
+  const btn = document.getElementById('confirm-btn');
+  btn.style.opacity = '.5';
+  try {
+    await fetch(`${BASE}/api/driver/location`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: driverPhone, lat: lastLat, lng: lastLng, confirm: true })
+    });
+    // Appel WhatsApp avec "1" pré-rempli
+    window.open('https://wa.me/22241028510?text=1', '_blank');
+  } finally { btn.style.opacity = '1'; setTimeout(loadStatus, 2000); }
+}
+
 async function finishRide() {
-  await fetch(`${BASE}/api/driver/${driverPhone}/finish`, { method:'POST' });
-  isOnline = true;
-  document.getElementById('finish-btn').style.display = 'none';
-  updateUI(false);
-  setTimeout(loadStatus, 1000);
+  const btn = document.getElementById('finish-btn');
+  if (btn) btn.style.opacity = '.5';
+  try {
+    await fetch(`${BASE}/api/driver/${driverPhone}/finish`, { method:'POST' });
+    isOnline = true;
+    updateUI(false, undefined, false);
+    setTimeout(loadStatus, 1000);
+  } finally { if (btn) btn.style.opacity = '1'; }
 }
 
 function doLogout() {
