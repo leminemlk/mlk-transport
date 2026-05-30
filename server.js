@@ -95,7 +95,8 @@ app.post('/webhook', async (req, res) => {
         const existing = await DB.drivers.get(phone);
         if (existing) {
           if (existing.validated) {
-            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?phone=${phone}`);
+            const tok2 = await DB.getOrCreateDriverToken(phone);
+            await sendText(phone, `✅ أنت مسجل بالفعل | Déjà inscrit, ${existing.name} !\n\n👉 https://mlk-transport-production.up.railway.app/chauffeur.html?t=${tok2}`);
           } else if (existing.reg_step === 'done') {
             await sendText(phone, `⏳ طلبك قيد المراجعة | Dossier en cours d'examen.`);
           } else {
