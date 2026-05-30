@@ -451,7 +451,12 @@ app.post('/api/driver/respond', async (req, res) => {
 // ─── API CLIENT LOCATE ────────────────────────────────────────
 app.post('/api/locate', async (req, res) => {
   try {
-    const { phone, lat, lng } = req.body;
+    let { phone, token, lat, lng } = req.body;
+    // Résoudre token → phone
+    if (!phone && token) {
+      const client = await DB.getClientByToken(token);
+      if (client) phone = client.phone;
+    }
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     if (await DB.blacklist.check(phone)) return res.status(403).json({ error: 'Bloqué' });
     await DB.clients.upsert(phone);
@@ -489,7 +494,11 @@ app.post('/api/locate', async (req, res) => {
 // Mettre à jour position client en cours de recherche
 app.post('/api/locate/update', async (req, res) => {
   try {
-    const { phone, lat, lng } = req.body;
+    let { phone, token, lat, lng } = req.body;
+    if (!phone && token) {
+      const client = await DB.getClientByToken(token);
+      if (client) phone = client.phone;
+    }
     if (!phone || !lat || !lng) return res.status(400).json({ error: 'Données manquantes' });
     await DB.pool.query(
       `UPDATE rides SET client_lat=$1, client_lng=$2
@@ -503,7 +512,11 @@ app.post('/api/locate/update', async (req, res) => {
 // Annuler depuis locate.html
 app.post('/api/locate/cancel', async (req, res) => {
   try {
-    const { phone } = req.body;
+    let { phone, token } = req.body;
+    if (!phone && token) {
+      const client = await DB.getClientByToken(token);
+      if (client) phone = client.phone;
+    }
     if (!phone) return res.status(400).json({ error: 'phone requis' });
     await DB.queue.remove(phone);
     await DB.pool.query(
