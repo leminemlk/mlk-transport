@@ -60,11 +60,12 @@ async function init() {
       created_at   TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS client_selections (
-      client_phone TEXT PRIMARY KEY,
-      ride_id      INTEGER,
-      drivers_json TEXT,
-      lat          REAL, lng REAL,
-      created_at   TIMESTAMPTZ DEFAULT NOW()
+      client_phone  TEXT PRIMARY KEY,
+      ride_id       INTEGER,
+      drivers_json  TEXT,
+      tried_phones  TEXT DEFAULT '[]',
+      lat           REAL, lng REAL,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS payments (
       id           SERIAL PRIMARY KEY,
@@ -145,6 +146,7 @@ async function migrate() {
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS near_since TIMESTAMPTZ`,
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS separated_since TIMESTAMPTZ`,
     `ALTER TABLE rides ADD COLUMN IF NOT EXISTS confidence_score INTEGER DEFAULT 0`,
+    `ALTER TABLE client_selections ADD COLUMN IF NOT EXISTS tried_phones TEXT DEFAULT '[]'`,
   ];
   for (const sql of cols) {
     try { await pool.query(sql); } catch(e) {}
