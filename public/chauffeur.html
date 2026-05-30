@@ -228,7 +228,7 @@ function showDashboard(data) {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('drv-name').textContent = data.driver.name;
-  document.getElementById('wa-link').href = `https://wa.me/${driverPhone}`;
+  document.getElementById('wa-link').href = 'https://wa.me/22241028510?text=1';
   
   const wasOnline = data.driver.status === 'online' || data.driver.status === 'busy';
   isOnline = wasOnline;

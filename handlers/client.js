@@ -10,7 +10,7 @@ async function handleClient(msg, phone, pushName=null) {
 
   const msgType     = msg.type;
   const hasLocation = msgType === 'location';
-  const text        = (msgType === 'text' ? (msg.text?.body||'') : '').trim();
+  const text        = (msgType === 'text' ? (msg.text?.body||'') : '').trim().toLowerCase();
   const isMedia     = ['sticker','image','audio','video','document','reaction'].includes(msgType);
 
   // ── 0 : annuler ───────────────────────────────────────────
@@ -25,96 +25,50 @@ async function handleClient(msg, phone, pushName=null) {
     return;
   }
 
-  // ── Client choisit un chauffeur → AUTO-ASSIGNATION ────────
-  const sel = await DB.clientSelections.get(phone);
-  if (sel && /^[1-9]$/.test(text)) {
-    const idx = parseInt(text)-1;
-    if (idx >= sel.drivers.length) {
-      await sendText(phone, `⚠️ اختر بين 1 و${sel.drivers.length}.`);
-      return;
-    }
-    const chosen = sel.drivers[idx];
-
-    // Marquer ce chauffeur comme "essayé" pour cette session
-    const tried = sel.tried_phones ? JSON.parse(sel.tried_phones) : [];
-    tried.push(chosen.phone);
-
-    // AUTO-ASSIGNATION immédiate
-    await DB.pool.query(
-      `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2`,
-      [chosen.phone, sel.ride_id]
-    );
-    await DB.drivers.setStatus('busy', chosen.phone);
-    await DB.queue.remove(phone);
-
-    // Garder sélection en DB avec liste des essayés
-    await DB.clientSelections.set(phone, sel.ride_id, sel.drivers, sel.lat, sel.lng);
-    await DB.pool.query(
-      `UPDATE client_selections SET tried_phones=$1 WHERE client_phone=$2`,
-      [JSON.stringify(tried), phone]
-    );
-
-    // Envoyer contact chauffeur au client
-    const eta = DB.estimateMinutes(parseFloat(chosen.distKm));
-    const cap = `✅ *${chosen.name}*\n📍 ${chosen.distKm} km · ⏱️ ${eta} min\n${chosen.clim?'❄️':'🌡'}\n📞 *wa.me/${chosen.phone}*\n\n_اتصل مباشرة | Appelez directement_\n\nاكتب *0* للإلغاء`;
-    if (chosen.photo_ext) {
-      try { await sendImage(phone, chosen.photo_ext, cap); } catch(e) { await sendText(phone, cap); }
-    } else { await sendText(phone, cap); }
-
-    // Notifier le chauffeur automatiquement
-    await sendText(chosen.phone,
-      `🚖 *تم تعيين رحلة لك ! | Course assignée !*\n\n` +
-      `📞 *العميل ينتظرك :*\nwa.me/${phone}\n` +
-      `📍 ${chosen.distKm} km · ⏱️ ${eta} min\n\n` +
-      `_الرحلة ستُؤكَّد تلقائياً عند لقائكم_\n` +
-      `_La course sera confirmée automatiquement_\n\n` +
-      `*1* → Terminer la course quand c'est fini`
-    );
-
-    console.log(`[CLIENT] ${phone} → assigné à ${chosen.name} (${chosen.distKm}km)`);
-    return;
-  }
-
-  // ── Client envoie un autre message avec course en cours → nouvelle liste ──
-  if (sel) {
-    // Re-envoyer la liste sans les chauffeurs déjà essayés
-    const tried = sel.tried_phones ? JSON.parse(sel.tried_phones) : [];
-    if (tried.length > 0 && sel.drivers.length > tried.length) {
-      const remaining = sel.drivers.filter(d => !tried.includes(d.phone));
-      if (remaining.length > 0) {
-        await sendText(phone,
-          `🔄 *اختر سائقاً آخر | Choisissez un autre chauffeur :*`
-        );
-        for (let i=0; i<remaining.length; i++) {
-          const d = remaining[i];
-          const eta = DB.estimateMinutes(parseFloat(d.distKm));
-          const caption = `*${i+1}️⃣ ${d.name}*\n📍 ${d.distKm} km · ⏱️ ${eta} min\n${d.clim?'❄️':'🌡'}\n📞 wa.me/${d.phone}\n\n👉 اكتب *${i+1}*`;
-          if (d.photo_ext) {
-            try { await sendImage(phone, d.photo_ext, caption); } catch(e) { await sendText(phone, caption); }
-          } else { await sendText(phone, caption); }
-          await new Promise(r => setTimeout(r, 600));
-        }
+  // ── Course déjà en cours → rien faire ────────────────────
+  // (Trip Engine gère tout automatiquement)
+  const activePending = await DB.pool.query(
+    `SELECT status FROM rides WHERE client_phone=$1 AND status IN ('searching','assigned') LIMIT 1`, [phone]
+  );
+  if (activePending.rows.length > 0 && !hasLocation) {
+    // Client a renvoyé un message → veut relancer
+    if (text && text !== '0') {
+      // Annuler et relancer si course non encore confirmée
+      const st = activePending.rows[0].status;
+      if (st === 'searching') {
+        await DB.pool.query(`UPDATE rides SET status='cancelled' WHERE client_phone=$1 AND status='searching'`, [phone]);
+        await sendText(phone, `🔄 _Relancez en envoyant votre position_\n📍 ${LOCATE}`);
         return;
       }
+      // Course assigned → en route, informer
+      await sendText(phone, `🚕 _Le chauffeur est en route._ \nاكتب *0* للإلغاء | Tapez *0* pour annuler.`);
+      return;
     }
-    await sendText(phone, `⏳ طلبك قيد المعالجة.\nاكتب *0* للإلغاء`);
     return;
   }
 
-  // ── Sticker / media ───────────────────────────────────────
+  // ── Sticker / media → lien ────────────────────────────────
   if (isMedia) {
-    const inProg = await DB.pool.query(
-      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
+    const existing = await DB.pool.query(
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','assigned') LIMIT 1`, [phone]
     );
-    if (inProg.rows.length > 0) {
-      await sendText(phone, `⏳ طلبك قيد المعالجة.\nاكتب *0* للإلغاء`);
-      return;
-    }
+    if (existing.rows.length > 0) return;
     await sendText(phone, `🚕 *MK TAXI*\n\n📍 ${LOCATE}`);
     return;
   }
 
-  // ── Position GPS → liste des chauffeurs ──────────────────
+  // ── Autre texte sans course → lien ────────────────────────
+  if (!hasLocation && !isMedia) {
+    const existing = await DB.pool.query(
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','assigned') LIMIT 1`, [phone]
+    );
+    if (existing.rows.length === 0) {
+      await sendText(phone, `🚕 *MK TAXI*\n\n📍 ${LOCATE}`);
+    }
+    return;
+  }
+
+  // ── Position GPS → liste chauffeurs (1 seule fois) ────────
   if (hasLocation) {
     const lat  = msg.location.latitude;
     const lng  = msg.location.longitude;
@@ -124,18 +78,16 @@ async function handleClient(msg, phone, pushName=null) {
     await DB.pool.query(
       `UPDATE rides SET status='cancelled' WHERE client_phone=$1 AND status='searching' AND created_at < NOW() - INTERVAL '5 minutes'`, [phone]
     );
+
     const existing = await DB.pool.query(
-      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','offered','assigned') LIMIT 1`, [phone]
+      `SELECT id FROM rides WHERE client_phone=$1 AND status IN ('searching','assigned') LIMIT 1`, [phone]
     );
-    if (existing.rows.length > 0) {
-      await sendText(phone, `⏳ طلبك قيد المعالجة.\nاكتب *0* للإلغاء`);
-      return;
-    }
+    if (existing.rows.length > 0) return;
 
     const rideId  = await DB.rides.create(phone, lat, lng, zone);
     const radius  = await DB.getRadius();
-    const offered = await DB.pool.query(`SELECT driver_phone FROM rides WHERE status IN ('offered','assigned','busy')`);
-    const busy    = new Set(offered.rows.map(r => r.driver_phone).filter(Boolean));
+    const busyR   = await DB.pool.query(`SELECT driver_phone FROM rides WHERE status IN ('assigned') AND driver_phone IS NOT NULL`);
+    const busy    = new Set(busyR.rows.map(r => r.driver_phone).filter(Boolean));
     const nearby  = (await DB.findNearestDrivers(lat, lng, radius))
       .filter(d => !busy.has(d.phone))
       .slice(0,5)
@@ -151,25 +103,42 @@ async function handleClient(msg, phone, pushName=null) {
       return;
     }
 
+    // Sauvegarder sélection pour Trip Engine
     await DB.clientSelections.set(phone, rideId, nearby, lat, lng);
 
+    // Envoyer liste — CLIENT CLIQUE DIRECTEMENT sur wa.me, pas besoin de taper
     await sendText(phone,
-      `🚕 *${nearby.length} سائق متاح | ${nearby.length} chauffeur(s)*\n_اختر رقم السائق | Choisissez le numéro :_`
+      `🚕 *${nearby.length} سائق متاح | ${nearby.length} chauffeur(s)*\n` +
+      `_اتصل مباشرة بالسائق الذي تريد | Appelez directement le chauffeur de votre choix_\n\n` +
+      `اكتب *0* للإلغاء | Tapez *0* pour annuler.`
     );
+
     for (let i=0; i<nearby.length; i++) {
       const d = nearby[i];
       const eta = DB.estimateMinutes(parseFloat(d.distKm));
-      const caption = `*${i+1}️⃣ ${d.name}*\n📍 ${d.distKm} km · ⏱️ ${eta} min\n${d.clim?'❄️ Climatisée':'🌡 Sans clim'}\n📞 wa.me/${d.phone}\n\n👉 اكتب *${i+1}*`;
+      const caption =
+        `*${i+1}. ${d.name}*\n` +
+        `📍 ${d.distKm} km · ⏱️ ${eta} min\n` +
+        `${d.clim?'❄️ Climatisée':'🌡 Sans clim'}\n` +
+        `📞 *wa.me/${d.phone}*`;
+
       if (d.photo_ext) {
         try { await sendImage(phone, d.photo_ext, caption); } catch(e) { await sendText(phone, caption); }
       } else { await sendText(phone, caption); }
       await new Promise(r => setTimeout(r, 600));
     }
-    return;
-  }
 
-  // Tout autre message
-  await sendText(phone, `🚕 *MK TAXI*\n\n📍 ${LOCATE}`);
+    // Notifier tous les chauffeurs de la liste qu'un client est proche
+    for (const d of nearby) {
+      await sendText(d.phone,
+        `🔔 *عميل قريب منك | Client proche de vous*\n\n` +
+        `📍 ${d.distKm} km · ⏱️ ${DB.estimateMinutes(parseFloat(d.distKm))} min\n\n` +
+        `_إذا اتصل بك عميل فالرحلة ستُؤكَّد تلقائياً عند لقائكم_\n` +
+        `_Si un client vous appelle, la course se confirmera automatiquement_`
+      ).catch(()=>{});
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
 }
 
 module.exports = { handleClient };

@@ -156,11 +156,57 @@ async function calculateScore(ride) {
 // ─── VÉRIFICATION PRINCIPALE (appelée à chaque GPS update) ──
 async function checkRide(driverPhone, lat, lng) {
   try {
-    // Trouver la course active de ce chauffeur (status offered ou matched)
-    const r = await DB.pool.query(
-      `SELECT * FROM rides WHERE driver_phone=$1 AND status IN ('offered','matched','in_progress')
+    // 1. Course assigned à ce chauffeur
+    let r = await DB.pool.query(
+      `SELECT * FROM rides WHERE driver_phone=$1 AND status IN ('assigned','in_progress')
        ORDER BY created_at DESC LIMIT 1`, [driverPhone]
     );
+
+    // 2. Si pas de course assignée → chercher client searching dans le rayon
+    if (!r.rows[0]) {
+      const radius = await DB.getRadius();
+      const searching = await DB.pool.query(
+        `SELECT * FROM rides WHERE status='searching' AND client_lat IS NOT NULL
+         AND created_at > NOW() - INTERVAL '2 hours'
+         ORDER BY created_at ASC LIMIT 5`
+      );
+      for (const ride of searching.rows) {
+        const d = DB.distance(lat, lng, ride.client_lat, ride.client_lng);
+        if (d * 1000 <= 100) {
+          // Chauffeur à moins de 100m d'un client searching → auto-assigner
+          await DB.pool.query(
+            `UPDATE rides SET status='assigned', driver_phone=$1, assigned_at=NOW() WHERE id=$2`,
+            [driverPhone, ride.id]
+          );
+          await DB.drivers.setStatus('busy', driverPhone);
+          await DB.queue.remove(ride.client_phone);
+          const driver = await DB.drivers.get(driverPhone);
+          const clim = driver.clim ? '❄️' : '🌡';
+          const cap = `🚕 *تم تأكيد الرحلة ! | Course confirmée !*
+
+👤 *${driver.name}*
+📞 wa.me/${driverPhone}
+${clim}
+📍 ${Math.round(d*1000)}m`;
+          if (driver.photo_ext) {
+            try { await (require('./whapi')).sendImage(ride.client_phone, driver.photo_ext, cap); }
+            catch(e) { await sendText(ride.client_phone, cap); }
+          } else { await sendText(ride.client_phone, cap); }
+          await sendText(driverPhone,
+            `✅ *تم تعيين رحلة تلقائياً !*
+📞 wa.me/${ride.client_phone}
+📍 ${Math.round(d*1000)}m
+
+*1* → Terminer`
+          ).catch(()=>{});
+          console.log(`[TRIP ENGINE] Auto-assign ride ${ride.id} → driver ${driverPhone} (${Math.round(d*1000)}m)`);
+          r = await DB.pool.query(`SELECT * FROM rides WHERE id=$1`, [ride.id]);
+          break;
+        }
+      }
+      if (!r.rows[0]) return;
+    }
+
     if (!r.rows[0]) return;
     const ride = r.rows[0];
 
